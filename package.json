@@ -1,0 +1,12 @@
+{
+  "name": "transit-engine-tooling",
+  "private": true,
+  "description": "Repository-scoped operational tooling",
+  "devDependencies": {
+    "supabase": "^2.39.2"
+  },
+  "scripts": {
+    "supabase": "supabase"
+  }
+}
+

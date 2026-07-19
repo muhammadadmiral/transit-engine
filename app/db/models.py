@@ -1,0 +1,32 @@
+from datetime import date
+
+from geoalchemy2 import Geometry
+from sqlalchemy import Date, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
+
+
+class StopRecord(Base):
+    __tablename__ = "stops"
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    location: Mapped[object] = mapped_column(Geometry("POINT", srid=4326), nullable=False)
+
+
+class SegmentRecord(Base):
+    __tablename__ = "segments"
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    from_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
+    to_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    avg_duration_min: Mapped[float] = mapped_column(Float, nullable=False)
+    fare: Mapped[int] = mapped_column(Integer, nullable=False)
+    data_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
+    last_verified_at: Mapped[date] = mapped_column(Date, nullable=False)
+    color: Mapped[str] = mapped_column(String(6), nullable=False)
+    geometry: Mapped[object] = mapped_column(Geometry("LINESTRING", srid=4326), nullable=False)
+
