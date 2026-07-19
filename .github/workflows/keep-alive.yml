@@ -11,6 +11,5 @@ jobs:
     steps:
       - name: Ping health endpoint
         env:
-          HF_SPACE_URL: ${{ secrets.HF_PROD_SPACE_URL }}
+          HF_SPACE_URL: ${{ secrets.RENDER_PROD_URL }}
         run: curl --fail --silent --show-error --max-time 30 "${HF_SPACE_URL}/health"
-
