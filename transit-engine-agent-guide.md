@@ -178,11 +178,11 @@ services:
 
 ---
 
-## 10. Deployment (HuggingFace Spaces)
+## 10. Deployment (FastAPI Cloud)
 
-* Space dikonfigurasi dengan **Docker SDK** (bukan Gradio/Streamlit SDK bawaan HF) — `Dockerfile` di root repo yang menjalankan `uvicorn app.main:app`.
-* **`GET /health` wajib ada** dan ringan (tidak query DB kalau tidak perlu) — dipakai GitHub Actions scheduled workflow untuk ping berkala anti cold-start (lihat `blueprint.md` §12). Setup workflow ini (`.github/workflows/keep-alive.yml`) adalah bagian dari setup wajib repo ini, bukan opsional.
-* Env var production (`DATABASE_URL`, `DATA_REFRESH_SECRET`, dll) diset lewat HuggingFace Spaces secrets, bukan di-commit ke `.env`.
+* Entrypoint deployment adalah `app.main:app`, dikonfigurasi melalui `[tool.fastapi]` di `pyproject.toml`; Dockerfile hanya dipakai untuk local development bila diperlukan.
+* **`GET /health` wajib ada** dan ringan (tidak query DB kalau tidak perlu), untuk readiness dan observability. Tidak ada keep-alive cron karena FastAPI Cloud dapat scale-to-zero.
+* Env var runtime (`DATABASE_URL`, `DATA_REFRESH_SECRET`, dll) diset lewat FastAPI Cloud environment variables/secrets, bukan di-commit ke `.env`. Workflow GitHub menjalankan Alembic migration sebelum deploy.
 
 ---
 
@@ -200,7 +200,7 @@ services:
 | `allow_origins=["*"]` di CORS production | Whitelist origin `transhub-web` secara eksplisit |
 | Cache hasil rute hanya in-memory | Cache di tabel Postgres (survive restart/cold-start) |
 | Duplikasi tipe `Stop`/`Route`/`Segment` di beberapa file | Satu Pydantic schema di `models/schema.py` |
-| Deploy tanpa `/health` endpoint atau tanpa cron ping | Setup `GET /health` + GitHub Actions keep-alive wajib sebelum go-live |
+| Deploy tanpa `/health` endpoint | Pertahankan `GET /health` ringan untuk readiness dan observability |
 
 ---
 

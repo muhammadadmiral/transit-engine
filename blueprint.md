@@ -86,7 +86,7 @@ Awalnya proyek ini direncanakan monolitik di Next.js (Route Handler menjalankan 
 | --- | --- | --- |
 | **Isi** | UI, MapLibre rendering, form pencarian, state (Zustand/React Query), animasi | Routing engine (networkx), data ingestion (GTFS + manual angkot), database ownership, GeoJSON generation |
 | **Akses Database** | ❌ Tidak pernah langsung | ✅ Satu-satunya pemilik akses Supabase |
-| **Deploy** | Vercel | HuggingFace Spaces (Docker) |
+| **Deploy** | Vercel | FastAPI Cloud |
 | **Bahasa** | TypeScript | Python |
 
 **Aturan tegas:** `transhub-web` tidak pernah connect ke Supabase langsung, bahkan untuk read-only sederhana (mis. autocomplete lokasi) — semua data lewat REST API `transit-engine`. Pengecualian eksplisit: **geocoding** (nama tempat → lat/lng) lewat Nominatim dipanggil langsung dari Next.js Route Handler tipis, karena ini stateless, tidak menyentuh database TransHub, dan tidak melibatkan domain logic apa pun (lihat `transhub-web/agent-guide.md` §12).
@@ -141,7 +141,7 @@ Awalnya proyek ini direncanakan monolitik di Next.js (Route Handler menjalankan 
 | **Testing** | `pytest` | Wajib untuk `routing/` (domain logic kritis). |
 | **Lint & Format** | `ruff` + `black` | Setara Biome di sisi TypeScript. |
 | **Local Dev** | Docker Compose (FastAPI + Postgres lokal) | Supaya kontributor tidak perlu setup Python env manual + gampang reset state DB. |
-| **Deployment** | HuggingFace Spaces (Docker SDK) | Gratis, tapi free tier sleep setelah idle — mitigasi di §12. |
+| **Deployment** | FastAPI Cloud | Managed FastAPI deployment with Supabase integration and scale-to-zero. |
 
 ### 7.3 Utility Bersama (referensi, masing-masing repo pilih versi bahasanya)
 
@@ -239,7 +239,7 @@ Ini menggantikan pola lama "satu skema Zod di `data-ingestion/schema.ts`" — se
 * **Render layer jalur secara progresif** — jangan muat semua rute se-Jabodetabek sekaligus.
 * **Simplifikasi geometri GeoJSON** untuk zoom rendah — `transit-engine` yang bertanggung jawab menyederhanakan geometri sebelum dikirim (bukan tugas Next.js mengolah ulang).
 * **Tile map ringan** — pilih provider tile yang dioptimasi ukuran.
-* **Latensi lintas-service adalah bagian dari performance budget** — setiap pencarian rute berarti Vercel memanggil HuggingFace Spaces lewat network. Cold-start harus dimitigasi (§12), dan endpoint `/route-search` harus dites end-to-end untuk waktu respons realistis, bukan diasumsikan instan seperti computation lokal.
+* **Latensi lintas-service adalah bagian dari performance budget** — setiap pencarian rute berarti Vercel memanggil FastAPI Cloud lewat network. Endpoint `/route-search` harus dites end-to-end untuk waktu respons realistis, bukan diasumsikan instan seperti computation lokal.
 * GSAP dan Framer Motion tidak pernah dipasang di elemen DOM yang sama, `prefers-reduced-motion` dihormati — detail lengkap di `transhub-web/agent-guide.md`.
 
 ---
@@ -251,10 +251,10 @@ Constraint eksplisit: **budget $0**, cuma biaya domain.
 | Komponen | Platform | Catatan |
 | --- | --- | --- |
 | `transhub-web` | Vercel (Hobby) | Standar Next.js deployment. |
-| `transit-engine` | HuggingFace Spaces (Docker SDK) | Gratis, tapi Space **sleep setelah idle** — cold-start bisa 30–60 detik. |
+| `transit-engine` | FastAPI Cloud | Managed deployment; instances can scale to zero when idle. |
 | Database | Supabase (free tier) | Diakses eksklusif dari `transit-engine`. |
 
-**Mitigasi cold-start:** GitHub Actions scheduled workflow (gratis, di repo `transit-engine`) melakukan `GET /health` ke Space tiap ~10 menit supaya tidak masuk mode sleep. Ini solusi paling murah yang tidak butuh infra tambahan — dicatat di `transit-engine/agent-guide.md` sebagai bagian dari setup wajib, bukan opsional "nanti kalau sempat".
+**Deploy & migration:** workflow GitHub Actions menjalankan Alembic migration sebelum deploy ke FastAPI Cloud. Cache graph tidak boleh hanya hidup di memori atau filesystem instance, karena instance dapat dihentikan dan dibuat ulang.
 
 **CORS:** `transit-engine` harus eksplisit whitelist origin Vercel (`transhub-web`) di FastAPI CORS middleware — jangan `allow_origins=["*"]` di production meskipun tidak ada data sensitif user, karena endpoint compute-heavy tanpa rate-limit bisa disalahgunakan pihak lain kalau CORS terbuka penuh.
 
@@ -268,7 +268,7 @@ Constraint eksplisit: **budget $0**, cuma biaya domain.
 * Cakupan moda: KRL, MRT, LRT, TransJakarta (GTFS resmi) + angkot **koridor prioritas** yang connect ke titik transit resmi volume tinggi (§8.6), dengan label `community` yang jelas.
 * Peta geografis dengan overlay jalur berwarna per moda + animasi "Jalur Hidup" (termasuk efek kamera).
 * Rincian tarif & waktu per segmen, tanpa sistem akun/login.
-* `transit-engine` live di HuggingFace Spaces dengan cron ping aktif.
+* `transit-engine` live di FastAPI Cloud dengan Supabase sebagai sumber data persisten.
 
 ### 🟡 Fase 2: Growth & Optimization
 
@@ -276,7 +276,7 @@ Constraint eksplisit: **budget $0**, cuma biaya domain.
 * Mekanisme laporan pengguna untuk koreksi data trayek angkot.
 * Programmatic SEO untuk halaman rute populer.
 * Riwayat pencarian lokal (client-side saja, tanpa akun).
-* Evaluasi ulang infra kalau traffic naik (HF Spaces free tier vs opsi berbayar/Railway/Render).
+* Evaluasi ulang infra kalau traffic naik melampaui kapasitas atau kebutuhan FastAPI Cloud.
 
 ### 🔴 Fase 3: Advanced Scale
 
