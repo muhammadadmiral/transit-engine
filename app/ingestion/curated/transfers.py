@@ -86,9 +86,9 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
         .join(
             second,
             func.ST_DWithin(
-                cast(first.location, Geography(srid=4326)),
-                cast(second.location, Geography(srid=4326)),
-                MAX_SPATIAL_TRANSFER_METERS,
+                first.location,
+                second.location,
+                0.001347, # roughly 150m in degrees at equator
             ),
         )
         .where(
