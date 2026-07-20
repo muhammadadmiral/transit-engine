@@ -19,7 +19,7 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0,<3.0",
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
   "black>=25.0,<26.0",
   "httpx>=0.28,<1.0",
