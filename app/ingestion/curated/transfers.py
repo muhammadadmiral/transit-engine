@@ -6,8 +6,10 @@ import unicodedata
 from datetime import date
 from math import asin, cos, radians, sin, sqrt
 
-from sqlalchemy import func, select
+from geoalchemy2 import Geography
+from sqlalchemy import cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.db.models import StopRecord
 from app.models.schema import (
@@ -20,6 +22,8 @@ from app.models.schema import (
 VERIFIED_AT = date(2026, 7, 20)
 MAX_NAMED_TRANSFER_METERS = 350
 MAX_EXPLICIT_TRANSFER_METERS = 500
+MAX_SPATIAL_TRANSFER_METERS = 150
+SPATIAL_CONNECTOR_MODES = {"angkot", "bikun"}
 
 RAIL_TRANSFERS = (
     ("krl:cawang", "lrt-jabodebek:cikoko"),
@@ -56,7 +60,7 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
                 StopRecord.mode,
                 func.ST_Y(StopRecord.location),
                 func.ST_X(StopRecord.location),
-            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot")))
+            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")))
         )
     ).tuples()
     stops = {
@@ -67,7 +71,7 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
         if first_id in stops and second_id in stops:
             pairs.add(tuple(sorted((first_id, second_id))))
 
-    rail_stops = {key: value for key, value in stops.items() if value[1] != "transjakarta"}
+    rail_stops = {key: value for key, value in stops.items() if value[1] in {"mrt", "lrt", "krl"}}
     transjakarta_stops = {key: value for key, value in stops.items() if value[1] == "transjakarta"}
     for rail_id, rail in rail_stops.items():
         for transit_id, transit in transjakarta_stops.items():
@@ -75,11 +79,40 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             if _is_valid_transjakarta_transfer(rail_id, rail[0], transit[0], distance_meters):
                 pairs.add(tuple(sorted((rail_id, transit_id))))
 
+    first = aliased(StopRecord)
+    second = aliased(StopRecord)
+    spatial_query = (
+        select(first.id, second.id)
+        .join(
+            second,
+            func.ST_DWithin(
+                cast(first.location, Geography(srid=4326)),
+                cast(second.location, Geography(srid=4326)),
+                MAX_SPATIAL_TRANSFER_METERS,
+            ),
+        )
+        .where(
+            first.id < second.id,
+            first.mode != second.mode,
+            or_(
+                first.mode.in_(SPATIAL_CONNECTOR_MODES),
+                second.mode.in_(SPATIAL_CONNECTOR_MODES),
+            ),
+        )
+    )
+    for first_id, second_id in (await session.execute(spatial_query)).tuples():
+        if first_id in stops and second_id in stops:
+            pairs.add(tuple(sorted((first_id, second_id))))
+
     return [
         segment
         for first_id, second_id in sorted(pairs)
         for segment in _walking_pair(first_id, second_id, stops[first_id], stops[second_id])
     ]
+
+
+def _supports_spatial_transfer(first_mode: str, second_mode: str) -> bool:
+    return first_mode != second_mode and bool({first_mode, second_mode} & SPATIAL_CONNECTOR_MODES)
 
 
 def _is_valid_transjakarta_transfer(

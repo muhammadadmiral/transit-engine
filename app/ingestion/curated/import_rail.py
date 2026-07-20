@@ -1,4 +1,4 @@
-"""Persist the validated MRT Jakarta and active LRT Jakarta network."""
+"""Persist curated rail, KRL, Bikun, and their walking transfers."""
 
 import asyncio
 
@@ -28,7 +28,7 @@ async def import_rail() -> tuple[int, int]:
 
 def main() -> None:
     stops, segments = asyncio.run(import_rail())
-    print(f"Imported {stops} rail stops and {segments} directed rail segments.")
+    print(f"Imported {stops} curated stops and {segments} directed segments.")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from datetime import date, datetime
 
+from app.fares.catalog import DEFAULT_FARE_CATALOG
 from app.fares.engine import (
     EstimatedRangeFareRule,
     FareCatalog,
@@ -85,6 +86,16 @@ def test_estimated_range_stays_visible_to_api_consumers() -> None:
 
     assert quote.status is FareStatus.RANGE
     assert (quote.min_amount, quote.estimated_amount, quote.max_amount) == (5000, 6000, 8000)
+
+
+def test_default_angkot_fare_is_a_range_not_a_false_exact_price() -> None:
+    quote = quote_journey(
+        [segment("one", "angkot-1", "a", "b", product_id="angkot:regular", fare=5000)],
+        catalog=DEFAULT_FARE_CATALOG,
+    )
+
+    assert quote.status is FareStatus.RANGE
+    assert (quote.min_amount, quote.estimated_amount, quote.max_amount) == (4000, 5000, 7000)
 
 
 def test_time_dependent_fare_is_range_without_departure_and_peak_with_time() -> None:

@@ -3,9 +3,11 @@
 from datetime import date
 from typing import NamedTuple
 
+from app.ingestion.gtfs.transjakarta import TransitDataset
 from app.models.schema import DataConfidence, Segment, ServiceCategory, Stop, TransportMode
 
 VERIFIED_AT = date(2026, 7, 20)
+
 
 class BikunStop(NamedTuple):
     id: str
@@ -13,9 +15,9 @@ class BikunStop(NamedTuple):
     lat: float
     lng: float
 
+
 _STOPS = [
     BikunStop("stasiun-ui", "Halte Stasiun UI", -6.360531, 106.831775),
-    BikunStop("asrama", "Halte Asrama", -6.353385, 106.831411),
     BikunStop("menwa", "Halte Menwa", -6.359275, 106.830605),
     BikunStop("fisip", "Halte FISIP", -6.362145, 106.829023),
     BikunStop("psikologi", "Halte Psikologi", -6.364375, 106.829395),
@@ -28,16 +30,33 @@ _STOPS = [
 ]
 
 _RED_LINE = [
-    "stasiun-ui", "menwa", "fkm", "rs-ui", "vokasi", "teknik", "mipa", "balairung", "fisip", "psikologi", "stasiun-ui"
+    "stasiun-ui",
+    "menwa",
+    "fkm",
+    "rs-ui",
+    "vokasi",
+    "teknik",
+    "mipa",
+    "balairung",
+    "fisip",
+    "psikologi",
+    "stasiun-ui",
 ]
 
 _BLUE_LINE = [
-    "stasiun-ui", "psikologi", "fisip", "balairung", "mipa", "teknik", "vokasi", "rs-ui", "fkm", "menwa", "stasiun-ui"
+    "stasiun-ui",
+    "psikologi",
+    "fisip",
+    "balairung",
+    "mipa",
+    "teknik",
+    "vokasi",
+    "rs-ui",
+    "fkm",
+    "menwa",
+    "stasiun-ui",
 ]
 
-class TransitDataset(NamedTuple):
-    stops: list[Stop]
-    segments: list[Segment]
 
 def build_bikun_dataset() -> TransitDataset:
     stops: dict[str, Stop] = {}
@@ -52,11 +71,11 @@ def build_bikun_dataset() -> TransitDataset:
         )
 
     segments: list[Segment] = []
-    
+
     # Rute Merah
     for i in range(len(_RED_LINE) - 1):
         from_id = _RED_LINE[i]
-        to_id = _RED_LINE[i+1]
+        to_id = _RED_LINE[i + 1]
         segments.append(
             Segment(
                 id=f"bikun:red:{from_id}:{to_id}",
@@ -78,11 +97,11 @@ def build_bikun_dataset() -> TransitDataset:
                 ],
             )
         )
-        
+
     # Rute Biru
     for i in range(len(_BLUE_LINE) - 1):
         from_id = _BLUE_LINE[i]
-        to_id = _BLUE_LINE[i+1]
+        to_id = _BLUE_LINE[i + 1]
         segments.append(
             Segment(
                 id=f"bikun:blue:{from_id}:{to_id}",
