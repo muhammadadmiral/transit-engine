@@ -103,5 +103,5 @@ def _build_line(
                 (stops[to_id].lng, stops[to_id].lat),
             ],
         )
-        for from_id, to_id in zip(stop_ids, stop_ids[1:], strict=True)
+        for from_id, to_id in zip(stop_ids, stop_ids[1:], strict=False)
     ]
