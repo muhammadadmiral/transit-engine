@@ -1,67 +1,40 @@
-# Deployment with FastAPI Cloud
+# Deployment Architecture
 
-Each branch deploys to its own FastAPI Cloud app and Supabase database:
+Transit Engine dijalankan sebagai aplikasi FastAPI terkelola di FastAPI Cloud. Source code tetap platform-agnostic: entrypoint ASGI didefinisikan di `pyproject.toml`, sedangkan Docker Compose tersedia untuk development lokal.
 
-| Git branch | GitHub environment | FastAPI Cloud app | Supabase secret |
-| --- | --- | --- | --- |
-| `dev` | `development` | development / preview API | `DEV_DATABASE_URL` |
-| `main` | `production` | production API | `PROD_DATABASE_URL` |
+## Release flow
 
-The `Deploy FastAPI Cloud` workflow serializes deployments per branch. It runs `alembic upgrade head` before uploading the application, so code that adds database fields is only released after the matching schema exists.
+Repository memiliki dua jalur release:
 
-## One-time FastAPI Cloud setup
+- `dev` untuk validasi perubahan dan development deployment;
+- `main` untuk production.
 
-1. Create one FastAPI Cloud app for `dev` and one for `main`.
-2. In each app, add the runtime environment variables below. Mark sensitive values as secrets.
-3. Create a deploy token for each app.
-4. In GitHub, create `development` and `production` environments and add the corresponding secrets below. Environment-scoped names may be the same, but the values must target the matching app and database.
+GitHub Actions menjalankan quality check dan Alembic migration sebelum deployment. Release tidak boleh dilanjutkan jika test atau migration gagal. Credential deployment dan database disimpan sebagai encrypted environment secret dan tidak berada di repository.
 
-## Runtime environment variables in FastAPI Cloud
+## Runtime principles
 
-- `DATABASE_URL` (secret): Supabase connection string. A standard `postgresql://...` URL from the FastAPI Cloud Supabase integration is accepted; the application converts it to the asyncpg driver at runtime.
-- `APP_ENV`: `development` or `production`.
-- `CORS_ALLOWED_ORIGINS`: comma-separated allowed frontend origins, for example `https://transhub.example.com`.
-- `DATA_REFRESH_SECRET` (secret): required when the data-refresh endpoint is introduced.
+- Instance aplikasi boleh dihentikan dan dibuat ulang oleh platform.
+- Filesystem runtime dianggap ephemeral.
+- Supabase/PostgreSQL adalah sumber data persisten.
+- Graph cache in-memory adalah optimasi dan harus dapat dibangun ulang dari database.
+- Health check ringan tersedia untuk observability, bukan mekanisme keep-alive.
+- Origin frontend production diatur eksplisit melalui CORS.
 
-`PORT` is managed by FastAPI Cloud and must not be set. The app configuration is declared in `pyproject.toml`; FastAPI Cloud starts `app.main:app` directly, so its Dockerfile is not used in deployment.
+## Schema changes
 
-## GitHub environment secrets
+Alembic migration selalu dijalankan sebelum code yang bergantung pada schema baru. Perubahan yang sulit dibalik dilakukan bertahap: tambah struktur baru, deploy code kompatibel, migrasikan data, lalu hapus struktur lama pada release terpisah.
 
-Set these in both GitHub environments, with values appropriate for that environment:
+## Data releases
 
-- `FASTAPI_CLOUD_TOKEN`: deploy token created for that FastAPI Cloud app.
-- `FASTAPI_CLOUD_APP_ID`: UUID for that FastAPI Cloud app.
-- `DEV_DATABASE_URL` in `development`, or `PROD_DATABASE_URL` in `production`: async SQLAlchemy URL used by Alembic, e.g. `postgresql+asyncpg://...`.
+Dataset transit dirilis terpisah dari schema aplikasi:
 
-The FastAPI Cloud application itself needs only its own runtime `DATABASE_URL`; GitHub needs a database URL separately to run migrations before deployment. Never commit either URL or a deploy token.
+- GTFS TransJakarta dapat diperbarui dari sumber operator;
+- jaringan rail dan Bikun berasal dari snapshot terkurasi dan terversi;
+- angkot diambil dari OpenStreetMap, disaring, lalu mengganti snapshot angkot secara transaksional;
+- setiap data refresh diikuti rebuild konektor transfer dan invalidasi/restart graph cache.
 
-## Deployment behavior
+Fetcher yang gagal tidak boleh mengosongkan dataset production. Data baru harus lolos validasi model dan smoke test representatif sebelum dianggap siap.
 
-FastAPI Cloud can scale to zero when idle. There is intentionally no keep-alive workflow. The service must treat its filesystem and in-memory graph/cache as ephemeral; rebuild any future cache from Supabase.
+## Public deployment
 
-For schema evolution, use gradual migrations: add database structures before code consumes them, and remove structures only after code no longer uses them.
-
-## Initial TransJakarta import
-
-After the first `dev` deployment has applied migrations, import the official feed from a machine with the development `DATABASE_URL` configured:
-
-```bash
-uv run python -m app.ingestion.gtfs.import_transjakarta
-```
-
-To repeat an import from an already downloaded archive:
-
-```bash
-uv run python -m app.ingestion.gtfs.import_transjakarta --feed /path/to/file_gtfs.zip
-```
-
-The source defaults to the official `https://gtfs.transjakarta.co.id/files/file_gtfs.zip` URL. The command atomically replaces TransJakarta rows, so removed or changed feed records do not leave stale routing data behind.
-
-After deploying, the same refresh can be triggered remotely without exposing database credentials:
-
-```bash
-curl --fail --request POST "https://<your-dev-app>.fastapicloud.dev/data-refresh/transjakarta" \
-  --header "X-Data-Refresh-Secret: <DATA_REFRESH_SECRET>"
-```
-
-Set a non-empty, unique `DATA_REFRESH_SECRET` in FastAPI Cloud before using this endpoint.
+Production service saat ini berada di FastAPI Cloud. Detail account, application ID, token, database URL, dan konfigurasi environment tidak didokumentasikan secara publik.

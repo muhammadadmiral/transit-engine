@@ -1,95 +1,66 @@
-# ⚙️ transit-engine
+# Transit Engine
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)](./LICENSE)
+Routing backend untuk **TransHub Jabodetabek**, sebuah perencana perjalanan transportasi publik multimoda. Transit Engine menyatukan jaringan KRL, MRT, LRT, TransJakarta, angkot, dan layanan pengumpan lain ke dalam satu graph agar pengguna dapat membandingkan perjalanan tercepat dan termurah.
 
-Backend domain-logic service untuk **[TransHub Jabodetabek](https://github.com/muhammadadmiral/transhub-web)** — graph routing engine multi-kriteria di atas jaringan transit Jabodetabek (KRL, MRT, LRT, TransJakarta, angkot), plus pipeline data ingestion dari GTFS resmi dan riset manual.
+## Yang dikerjakan
 
-Repo ini **satu-satunya pemilik akses database** di proyek TransHub — frontend ([`transhub-web`](https://github.com/muhammadadmiral/transhub-web)) berkomunikasi dengan repo ini murni lewat REST API.
+- Menghitung perjalanan lintas moda dan titik perpindahannya.
+- Membandingkan opsi tercepat dan termurah sebagai dua perhitungan terpisah.
+- Menghitung tarif pada level perjalanan, termasuk tarif flat, matriks origin–destination, band jarak, tarif berbasis waktu, dan rentang estimasi.
+- Menyediakan geometri rute yang siap divisualisasikan di peta.
+- Menandai asal dan tingkat keyakinan data agar estimasi komunitas tidak terlihat seperti data resmi.
 
-<!-- > 📌 Arsitektur & PRD lengkap lintas-repo ada di [`blueprint.md`](https://github.com/username-lu/transhub-web/blob/main/blueprint.md) (repo `transhub-web`). Konvensi kode & aturan build khusus repo ini ada di [`agent-guide.md`](./agent-guide.md). -->
+## Cakupan moda
 
----
+| Moda | Sumber data saat ini | Status tarif |
+| --- | --- | --- |
+| TransJakarta | GTFS operator | Exact, flat |
+| MRT Jakarta | Dataset jaringan dan matriks tarif terkurasi | Exact, origin–destination |
+| LRT Jakarta | Dataset jaringan terkurasi | Exact, flat |
+| LRT Jabodebek | Dataset jaringan terkurasi | Estimasi berbasis jarak dan waktu |
+| KRL Jabodetabek | Topologi dan geometri jaringan terkurasi | Estimasi band jarak |
+| Angkot | OpenStreetMap yang disaring dan diaudit | Rentang estimasi |
+| Bikun UI | Dataset kampus terkurasi | Gratis |
 
-## 🧠 Apa yang Dilakukan Service Ini
+Data angkot bersifat parsial dan dapat berubah di lapangan. Segmennya selalu diberi label `community`; harga tidak dipresentasikan sebagai angka pasti.
 
-* Menghitung rute kombinasi lintas moda **tercepat** dan **termurah** lewat pathfinding graph (`networkx`), bukan skor gabungan tunggal.
-* Mem-parsing & menormalisasi feed **GTFS** resmi (KRL, MRT, TransJakarta) ke satu skema data terpadu (`gtfs-kit`).
-* Mengelola pipeline data **angkot** dari riset manual + ekstraksi dibantu LLM, dengan label kepercayaan data (`dataConfidence`) di setiap segmen rute.
-* Mengembalikan hasil rute sebagai **GeoJSON `FeatureCollection`** siap-render — frontend tidak perlu mengolah data mentah.
-* Mempublikasikan kontrak API-nya sebagai **OpenAPI spec**, dikonsumsi frontend untuk generate tipe TypeScript otomatis.
+## Arsitektur
 
----
+Transit Engine dibangun dengan FastAPI, Pydantic, NetworkX, SQLAlchemy async, Alembic, PostgreSQL, dan PostGIS. Supabase menyimpan jaringan transit; frontend berkomunikasi melalui service ini dan tidak mengakses database secara langsung.
 
-## 🛠️ Tech Stack
-
-| Layer | Teknologi |
-| --- | --- |
-| **Framework** | FastAPI (Python 3.11+) |
-| **Graph & Pathfinding** | `networkx` |
-| **GTFS Parsing** | `gtfs-kit` |
-| **Validasi & Skema** | Pydantic |
-| **Database** | Supabase (PostgreSQL + PostGIS) via SQLAlchemy (async) + `asyncpg` |
-| **Migrasi Skema** | Alembic |
-| **Testing** | `pytest` |
-| **Lint & Format** | `ruff`, `black` |
-| **Deployment** | FastAPI Cloud |
-
----
-
-## 🚀 Local Development
-
-Butuh Docker & Docker Compose.
-
-```bash
-git clone https://github.com/muhammadadmiral/transit-engine.git
-cd transit-engine
-cp .env.example .env   # isi credential lokal
-docker compose up
-```
-
-API berjalan di [http://localhost:8000](http://localhost:8000). Dokumentasi interaktif (Swagger UI) di [http://localhost:8000/docs](http://localhost:8000/docs).
-
-Jalankan migrasi database (sekali di awal / setiap ada perubahan skema):
-
-```bash
-docker compose exec api alembic upgrade head
-```
-
-Jalankan test suite:
-
-```bash
-docker compose exec api pytest
-```
-
----
-
-## 📁 Struktur Proyek (ringkas)
-
-```
+```text
 app/
-├── routers/       # endpoint FastAPI (route_search, stops, data_refresh, health)
-├── routing/       # domain logic murni: graph, pathfinder, weights, geojson_builder — WAJIB ditest
-├── ingestion/     # adapter GTFS per moda + pipeline data angkot manual/LLM-assisted
-├── models/        # schema.py (Pydantic, satu-satunya definisi tipe data) + db_models.py (ORM)
-├── db/            # session & migrasi Alembic
-└── core/          # config & env var loading
+├── routers/       HTTP boundary
+├── routing/       graph, pathfinding, weights, dan GeoJSON
+├── fares/         journey-level fare engine
+├── ingestion/     GTFS, dataset terkurasi, dan OpenStreetMap
+├── models/        kontrak domain dan API
+└── db/            persistence dan migration
 ```
 
-<!-- Detail lengkap konvensi & aturan implementasi ada di [`agent-guide.md`](./agent-guide.md). -->
+## Development
 
----
+```bash
+python -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+cp .env.example .env
+.venv/bin/alembic upgrade head
+.venv/bin/pytest -q
+```
 
-## 🌐 Deployment
+Docker Compose juga tersedia untuk menjalankan API dan PostGIS secara lokal. Semua perubahan schema wajib melalui Alembic.
 
-Service ini di-deploy ke **FastAPI Cloud**. Push ke `dev` men-deploy app development dan push ke `main` men-deploy app production, setelah Alembic migration untuk database lingkungan tersebut berhasil. Detail secret dan setup ada di [DEPLOYMENT.md](./DEPLOYMENT.md).
+## Dokumentasi
 
----
+- [Product blueprint](./blueprint.md)
+- [Frontend integration & design guide](./FRONTEND_GUIDE.md)
+- [Deployment architecture](./DEPLOYMENT.md)
+- [Database architecture](./SUPABASE.md)
 
-## ⚠️ Disclaimer
+## Status dan batasan
 
-Data dalam service ini berasal dari kombinasi feed GTFS resmi operator dan riset manual komunitas (khusus angkot). Data angkot ditandai eksplisit sebagai non-resmi lewat field `dataConfidence` di setiap respons API dan bisa tidak akurat 100%. Proyek ini independen, tidak berafiliasi dengan operator transportasi manapun.
+Proyek ini masih aktif dikembangkan. Durasi perjalanan adalah estimasi dan belum memakai posisi kendaraan real-time. Data komunitas—terutama angkot—dapat tidak lengkap atau berbeda dari kondisi lapangan. TransHub independen dan tidak berafiliasi dengan operator transportasi mana pun.
 
-## 📄 License
+## License
 
-MIT — bebas dipakai, dimodifikasi, dan disebarluaskan dengan atribusi.
+MIT.

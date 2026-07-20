@@ -1,40 +1,38 @@
-# Supabase CLI and database workflow
+# Database Architecture
 
-This service is the sole database owner. Supabase provides hosted PostgreSQL/PostGIS; the API connects through SQLAlchemy and `asyncpg` only.
+Transit Engine memakai Supabase sebagai managed PostgreSQL dengan PostGIS. Database dimiliki eksklusif oleh backend; aplikasi frontend tidak menyimpan credential dan tidak melakukan query Supabase langsung.
 
-## CLI setup
+## Model data
 
-The CLI is project-scoped, so it is installed with the repository rather than globally:
+Jaringan routing dinormalisasi menjadi dua tabel inti:
 
-```bash
-npm install
-npx supabase login
-npx supabase link --project-ref <development-project-ref>
-```
+- `stops` menyimpan identitas, nama, moda, dan titik geografis;
+- `segments` menyimpan sisi graph terarah, rute, klasifikasi layanan, durasi, produk tarif, provenance, warna, dan geometri.
 
-The CLI's local state is ignored. Run `link` separately when you switch between the `dev` and `main` branches, because each branch targets a different Supabase project.
+Walking transfer juga disimpan sebagai segmen terarah. Konektor rail–TransJakarta berasal dari daftar/alias yang ditinjau, sedangkan proximity matching dibatasi pada layanan lokal yang memang membutuhkan pencocokan spasial. Stop dengan moda sama tidak dihubungkan otomatis hanya karena berdekatan.
 
-## Migration authority
+## Schema ownership
 
-**Alembic is the only schema-migration authority in this repository.** Do not create a second, competing schema history in `supabase/migrations/` and do not run `supabase db push` for application tables.
+Alembic adalah satu-satunya otoritas migration aplikasi. Riwayat schema disimpan bersama source code sehingga deployment dapat direproduksi dan ditinjau.
 
-Use the Supabase CLI for login, project inspection, local stack operations when needed, and direct project linking. Use these commands for schema changes:
+Perubahan schema tidak dilakukan melalui dashboard atau `supabase db push` untuk tabel aplikasi. Supabase CLI boleh dipakai untuk pengelolaan project dan local tooling, tetapi tidak membuat riwayat migration kedua.
 
-```bash
-alembic revision --autogenerate -m "describe_change"
-alembic upgrade head
-```
+## Geospatial data
 
-This preserves the architecture specified for `transit-engine` while still making Supabase operations available through the official CLI. Direct changes through the Supabase dashboard are prohibited after migrations begin; capture every schema change in Alembic first.
+Semua koordinat memakai WGS84 (`SRID 4326`) dalam urutan longitude, latitude untuk GeoJSON. PostGIS digunakan untuk query kedekatan dalam meter dan index spasial; perhitungan derajat tidak dipakai sebagai pengganti jarak meter.
 
-## Environments
+## Data integrity
 
-Create separate Supabase projects for `dev` and `main`:
+- Import per moda berjalan dalam transaksi dan mengganti snapshot lama secara atomik.
+- Foreign key memastikan setiap segmen menunjuk stop yang tersedia.
+- ID dan field text dibatasi oleh schema database.
+- Sumber official dan community tidak disamakan.
+- Fare yang tidak pasti disimpan sebagai produk estimasi, bukan angka exact palsu.
+- Kegagalan sumber eksternal tidak menghapus snapshot terakhir yang valid.
 
-| Git branch | Supabase project | GitHub secret |
-| --- | --- | --- |
-| `dev` | development/staging | `DEV_DATABASE_URL` |
-| `main` | production | `PROD_DATABASE_URL` |
+## Security
 
-The GitHub migration workflow uses the matching secret and runs Alembic after a successful push. Database URLs must use the async SQLAlchemy form in runtime (`postgresql+asyncpg://...`); the migration environment converts it to the synchronous PostgreSQL driver automatically.
-
+- Connection string hanya berada di local environment, CI secret, dan runtime secret manager.
+- Frontend hanya mengonsumsi API Transit Engine.
+- Database URL, password, access token, dan detail project tidak boleh muncul di log atau dokumentasi publik.
+- Backup/restore point diperlukan sebelum migration destruktif atau refresh data production berskala besar.
