@@ -27,6 +27,8 @@ def segment_from_record(record: SegmentRecord, geometry_json: str) -> Segment:
         from_stop_id=record.from_stop_id,
         to_stop_id=record.to_stop_id,
         mode=record.mode,
+        service_category=record.service_category,
+        service_name=record.service_name,
         avg_duration_min=record.avg_duration_min,
         fare=record.fare,
         data_confidence=record.data_confidence,

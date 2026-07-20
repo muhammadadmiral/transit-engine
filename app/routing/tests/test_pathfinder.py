@@ -2,7 +2,13 @@ from datetime import date
 
 import pytest
 
-from app.models.schema import DataConfidence, SearchCriteria, Segment, TransportMode
+from app.models.schema import (
+    DataConfidence,
+    SearchCriteria,
+    Segment,
+    ServiceCategory,
+    TransportMode,
+)
 from app.routing.graph import build_graph
 from app.routing.pathfinder import RouteNotFoundError, find_route
 
@@ -22,6 +28,8 @@ def segment(
         from_stop_id=from_stop_id,
         to_stop_id=to_stop_id,
         mode=mode,
+        service_category=ServiceCategory.MAIN,
+        service_name=mode.value.upper(),
         avg_duration_min=duration,
         fare=fare,
         data_confidence=DataConfidence.OFFICIAL,

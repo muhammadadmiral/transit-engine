@@ -35,6 +35,8 @@ async def replace_transjakarta_dataset(session: AsyncSession, dataset: TransitDa
             "from_stop_id": segment.from_stop_id,
             "to_stop_id": segment.to_stop_id,
             "mode": segment.mode.value,
+            "service_category": segment.service_category.value,
+            "service_name": segment.service_name,
             "avg_duration_min": segment.avg_duration_min,
             "fare": segment.fare,
             "data_confidence": segment.data_confidence.value,

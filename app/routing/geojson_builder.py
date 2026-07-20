@@ -8,6 +8,8 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
             properties={
                 "segmentId": segment.id,
                 "mode": segment.mode.value,
+                "serviceCategory": segment.service_category.value,
+                "serviceName": segment.service_name,
                 "color": f"#{segment.color}",
                 "fromStopId": segment.from_stop_id,
                 "toStopId": segment.to_stop_id,

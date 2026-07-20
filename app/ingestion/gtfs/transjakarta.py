@@ -8,10 +8,20 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
-from app.models.schema import DataConfidence, Segment, Stop, TransportMode
+from app.models.schema import DataConfidence, Segment, ServiceCategory, Stop, TransportMode
 
 DEFAULT_COLOR = "009999"
 DEFAULT_FARE = 3500
+SERVICE_CATEGORY_BY_ROUTE_DESC = {
+    "BRT": ServiceCategory.MAIN,
+    "Angkutan Umum Integrasi": ServiceCategory.FEEDER,
+    "Rusun": ServiceCategory.FEEDER,
+    "Mikrotrans": ServiceCategory.MICROTRANS,
+    "Transjabodetabek": ServiceCategory.REGIONAL,
+    "Royaltrans": ServiceCategory.PREMIUM,
+    "Shuttle": ServiceCategory.SHUTTLE,
+    "Bus Wisata": ServiceCategory.TOURIST,
+}
 
 
 @dataclass(frozen=True)
@@ -114,6 +124,7 @@ def normalize_feed(
             avg_duration_min=mean(values),
             fare=route_fares.get(route_id, DEFAULT_FARE),
             color=_route_color(route_rows.get(route_id, {})),
+            service_name=_service_name(route_rows.get(route_id, {})),
             coordinates=geometries[(route_id, direction_id, from_stop_id, to_stop_id)],
             verified_at=verified_at,
         )
@@ -131,6 +142,7 @@ def _build_segment(
     avg_duration_min: float,
     fare: int,
     color: str,
+    service_name: str,
     coordinates: list[tuple[float, float]],
     verified_at: date,
 ) -> Segment:
@@ -142,6 +154,8 @@ def _build_segment(
         from_stop_id=f"transjakarta:{from_stop_id}",
         to_stop_id=f"transjakarta:{to_stop_id}",
         mode=TransportMode.TRANSJAKARTA,
+        service_category=_service_category(service_name),
+        service_name=service_name,
         avg_duration_min=avg_duration_min,
         fare=fare,
         data_confidence=DataConfidence.OFFICIAL,
@@ -170,6 +184,20 @@ def _route_color(route: dict[str, Any]) -> str:
     if len(color) == 6 and all(character in "0123456789ABCDEF" for character in color):
         return color
     return DEFAULT_COLOR
+
+
+def _service_name(route: dict[str, Any]) -> str:
+    service_name = str(route.get("route_desc") or "").strip()
+    if service_name not in SERVICE_CATEGORY_BY_ROUTE_DESC:
+        route_id = route.get("route_id", "unknown")
+        raise ValueError(
+            f"unsupported TransJakarta route_desc {service_name!r} for route {route_id}"
+        )
+    return service_name
+
+
+def _service_category(service_name: str) -> ServiceCategory:
+    return SERVICE_CATEGORY_BY_ROUTE_DESC[service_name]
 
 
 def _shape_points(shapes: Any) -> dict[str, list[tuple[float, float, float]]]:

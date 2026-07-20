@@ -3,6 +3,7 @@ from datetime import date
 import pandas as pd
 
 from app.ingestion.gtfs.transjakarta import normalize_feed
+from app.models.schema import ServiceCategory
 
 
 def test_normalizes_two_directed_segments_and_keeps_boarding_fare() -> None:
@@ -14,7 +15,15 @@ def test_normalizes_two_directed_segments_and_keeps_boarding_fare() -> None:
                 {"stop_id": "c", "stop_name": "C", "stop_lat": -6.22, "stop_lon": 106.82},
             ]
         ),
-        routes=pd.DataFrame([{"route_id": "1", "route_color": "00AA11"}]),
+        routes=pd.DataFrame(
+            [
+                {
+                    "route_id": "1",
+                    "route_color": "00AA11",
+                    "route_desc": "Angkutan Umum Integrasi",
+                }
+            ]
+        ),
         trips=pd.DataFrame(
             [
                 {
@@ -91,6 +100,8 @@ def test_normalizes_two_directed_segments_and_keeps_boarding_fare() -> None:
     assert {segment.route_id for segment in dataset.segments} == {"transjakarta:1:0"}
     assert [segment.avg_duration_min for segment in dataset.segments] == [4, 6]
     assert {segment.fare for segment in dataset.segments} == {3500}
+    assert {segment.service_category for segment in dataset.segments} == {ServiceCategory.FEEDER}
+    assert {segment.service_name for segment in dataset.segments} == {"Angkutan Umum Integrasi"}
     assert dataset.segments[0].coordinates == [
         (106.8, -6.2),
         (106.805, -6.205),

@@ -27,6 +27,16 @@ class DataConfidence(StrEnum):
     COMMUNITY = "community"
 
 
+class ServiceCategory(StrEnum):
+    MAIN = "main"
+    FEEDER = "feeder"
+    MICROTRANS = "microtrans"
+    REGIONAL = "regional"
+    PREMIUM = "premium"
+    SHUTTLE = "shuttle"
+    TOURIST = "tourist"
+
+
 class SearchCriteria(StrEnum):
     FASTEST = "fastest"
     CHEAPEST = "cheapest"
@@ -46,6 +56,8 @@ class Segment(SchemaModel):
     from_stop_id: str
     to_stop_id: str
     mode: TransportMode
+    service_category: ServiceCategory
+    service_name: str
     avg_duration_min: Annotated[float, Field(gt=0)]
     fare: Annotated[int, Field(ge=0)]
     data_confidence: DataConfidence

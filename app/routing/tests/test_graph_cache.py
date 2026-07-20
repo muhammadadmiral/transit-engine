@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.models.schema import DataConfidence, Segment, TransportMode
+from app.models.schema import DataConfidence, Segment, ServiceCategory, TransportMode
 from app.routing import graph_cache
 
 
@@ -15,6 +15,8 @@ async def test_reuses_graph_until_invalidated(monkeypatch) -> None:
         from_stop_id="a",
         to_stop_id="b",
         mode=TransportMode.TRANSJAKARTA,
+        service_category=ServiceCategory.MAIN,
+        service_name="BRT",
         avg_duration_min=3,
         fare=3500,
         data_confidence=DataConfidence.OFFICIAL,
