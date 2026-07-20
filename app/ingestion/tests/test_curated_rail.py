@@ -1,5 +1,6 @@
 from app.fares.catalog import DEFAULT_FARE_CATALOG
 from app.fares.engine import quote_journey
+from app.ingestion.curated.bikun import build_bikun_dataset
 from app.ingestion.curated.krl import BOGOR_MAIN, build_krl_dataset
 from app.ingestion.curated.rail import build_rail_dataset
 from app.models.schema import FareStatus, TransportMode
@@ -81,3 +82,19 @@ def test_quotes_krl_distance_band_as_estimate() -> None:
 
     assert quote.status is FareStatus.ESTIMATED
     assert quote.estimated_amount >= 5000
+
+
+def test_bikun_routes_have_no_orphan_stops_and_are_free() -> None:
+    dataset = build_bikun_dataset()
+    referenced_stop_ids = {
+        stop_id
+        for segment in dataset.segments
+        for stop_id in (segment.from_stop_id, segment.to_stop_id)
+    }
+
+    assert len(dataset.stops) == 10
+    assert len(dataset.segments) == 20
+    assert {stop.id for stop in dataset.stops} == referenced_stop_ids
+    assert {segment.route_id for segment in dataset.segments} == {"bikun:red", "bikun:blue"}
+    assert all(segment.fare == 0 for segment in dataset.segments)
+    assert all(segment.mode is TransportMode.BIKUN for segment in dataset.segments)

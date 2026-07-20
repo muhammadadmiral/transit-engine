@@ -2,6 +2,7 @@
 
 from app.fares.engine import (
     DistanceBandFareRule,
+    EstimatedRangeFareRule,
     FareCatalog,
     FlatFareRule,
     OdMatrixFareRule,
@@ -49,10 +50,12 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             amount=0,
             source_url="https://ui.ac.id",
         ),
-        FlatFareRule(
+        EstimatedRangeFareRule(
             product_id="angkot:regular",
-            amount=5000,
-            source_url="https://dishub.jabarprov.go.id",
+            estimated_amount=5000,
+            min_amount=4000,
+            max_amount=7000,
+            source_url=None,
         ),
     ]
 )

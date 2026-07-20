@@ -7,9 +7,9 @@ from datetime import date
 from math import asin, cos, radians, sin, sqrt
 
 from geoalchemy2 import Geography
-from sqlalchemy import cast, func, select
-from sqlalchemy.orm import aliased
+from sqlalchemy import cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.db.models import StopRecord
 from app.models.schema import (
@@ -22,6 +22,8 @@ from app.models.schema import (
 VERIFIED_AT = date(2026, 7, 20)
 MAX_NAMED_TRANSFER_METERS = 350
 MAX_EXPLICIT_TRANSFER_METERS = 500
+MAX_SPATIAL_TRANSFER_METERS = 150
+SPATIAL_CONNECTOR_MODES = {"angkot", "bikun"}
 
 RAIL_TRANSFERS = (
     ("krl:cawang", "lrt-jabodebek:cikoko"),
@@ -69,7 +71,7 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
         if first_id in stops and second_id in stops:
             pairs.add(tuple(sorted((first_id, second_id))))
 
-    rail_stops = {key: value for key, value in stops.items() if value[1] != "transjakarta"}
+    rail_stops = {key: value for key, value in stops.items() if value[1] in {"mrt", "lrt", "krl"}}
     transjakarta_stops = {key: value for key, value in stops.items() if value[1] == "transjakarta"}
     for rail_id, rail in rail_stops.items():
         for transit_id, transit in transjakarta_stops.items():
@@ -77,25 +79,30 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             if _is_valid_transjakarta_transfer(rail_id, rail[0], transit[0], distance_meters):
                 pairs.add(tuple(sorted((rail_id, transit_id))))
 
-    # Spatial Proximity Matching (<= 150m) for everything
+    # Only flexible-stop/local services get proximity-based transfers. Rail and
+    # TransJakarta connectors remain curated/name-validated to prevent shortcuts.
     S1 = aliased(StopRecord)
     S2 = aliased(StopRecord)
-    
-    spatial_pairs_query = select(
-        S1.id, S2.id
-    ).join(
-        S2,
-        func.ST_DWithin(
-            S1.location,
-            S2.location,
-            0.001347 # 150 meters in degrees at equator
+    spatial_pairs_query = (
+        select(S1.id, S2.id)
+        .join(
+            S2,
+            func.ST_DWithin(
+                cast(S1.location, Geography(srid=4326)),
+                cast(S2.location, Geography(srid=4326)),
+                MAX_SPATIAL_TRANSFER_METERS,
+            ),
         )
-    ).where(
-        S1.id < S2.id,
-        S1.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")),
-        S2.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")),
+        .where(
+            S1.id < S2.id,
+            S1.mode != S2.mode,
+            or_(
+                S1.mode.in_(SPATIAL_CONNECTOR_MODES),
+                S2.mode.in_(SPATIAL_CONNECTOR_MODES),
+            ),
+        )
     )
-    
+
     spatial_pairs_rows = (await session.execute(spatial_pairs_query)).tuples()
     for s1_id, s2_id in spatial_pairs_rows:
         if s1_id in stops and s2_id in stops:
@@ -106,6 +113,11 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
         for first_id, second_id in sorted(pairs)
         for segment in _walking_pair(first_id, second_id, stops[first_id], stops[second_id])
     ]
+
+
+def _supports_spatial_transfer(first_mode: str, second_mode: str) -> bool:
+    """Mirror the database predicate for tests and non-SQL consumers."""
+    return first_mode != second_mode and bool({first_mode, second_mode} & SPATIAL_CONNECTOR_MODES)
 
 
 def _is_valid_transjakarta_transfer(

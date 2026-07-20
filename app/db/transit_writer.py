@@ -40,7 +40,7 @@ async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes:
                 "name": stmt.excluded.name,
                 "mode": stmt.excluded.mode,
                 "location": stmt.excluded.location,
-            }
+            },
         )
         await session.execute(stmt)
 
@@ -93,7 +93,7 @@ async def insert_segments(session: AsyncSession, segments: list[Segment]) -> Non
                 "last_verified_at": stmt.excluded.last_verified_at,
                 "color": stmt.excluded.color,
                 "geometry": stmt.excluded.geometry,
-            }
+            },
         )
         await session.execute(stmt)
 

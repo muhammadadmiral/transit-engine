@@ -1,18 +1,183 @@
+"""Convert reviewed OpenStreetMap angkot relations into routing records."""
+
 import re
 import unicodedata
 from datetime import date
-from typing import Any
 from math import asin, cos, radians, sin, sqrt
+from typing import Any
 
-from app.models.schema import DataConfidence, Segment, ServiceCategory, Stop, TransportMode
 from app.ingestion.gtfs.transjakarta import TransitDataset
+from app.models.schema import DataConfidence, Segment, ServiceCategory, Stop, TransportMode
 
-VERIFIED_AT = date(2026, 7, 20)
 VIRTUAL_STOP_INTERVAL_METERS = 800.0
+MAX_ROUTE_SLUG_LENGTH = 40
+ANGKOT_KEYWORDS = (
+    "angkot",
+    "angkutan kota",
+    "koasi",
+    "kwk",
+    "mikrolet",
+)
+
+
+def parse_osm_relations(
+    relations: list[dict[str, Any]], *, verified_at: date | None = None
+) -> TransitDataset:
+    """Parse unique angkot relations; unrelated generic bus relations are ignored."""
+    stops: dict[str, Stop] = {}
+    segments: list[Segment] = []
+    seen_relation_ids: set[str] = set()
+    verification_date = verified_at or date.today()
+
+    for relation in relations:
+        tags = relation.get("tags", {})
+        relation_id = str(relation.get("id", ""))
+        if not relation_id or relation_id in seen_relation_ids or not _is_angkot_relation(tags):
+            continue
+        seen_relation_ids.add(relation_id)
+
+        coordinates = _relation_coordinates(relation)
+        if len(coordinates) < 2:
+            continue
+
+        reference = str(tags.get("ref") or tags.get("name") or relation_id)
+        name = str(tags.get("name") or f"Angkot {reference}")
+        route_slug = _normalize(reference)[:MAX_ROUTE_SLUG_LENGTH] or "route"
+        route_id = f"angkot:osm:{relation_id}:{route_slug}"
+        route_stops: list[tuple[str, tuple[float, float]]] = []
+
+        start_point = coordinates[0]
+        start_id = f"{route_id}:s0"
+        route_stops.append((start_id, start_point))
+        stops[start_id] = _stop(start_id, f"Titik awal {name}", start_point)
+
+        distance_since_stop = 0.0
+        last_stop_index = 0
+        stop_number = 1
+        for index, (previous, point) in enumerate(
+            zip(coordinates, coordinates[1:], strict=False), start=1
+        ):
+            distance_since_stop += _distance_meters(previous[1], previous[0], point[1], point[0])
+            if distance_since_stop < VIRTUAL_STOP_INTERVAL_METERS or index == len(coordinates) - 1:
+                continue
+
+            stop_id = f"{route_id}:s{stop_number}"
+            stops[stop_id] = _stop(stop_id, f"Perhentian {stop_number} — {name}", point)
+            route_stops.append((stop_id, point))
+            segments.append(
+                _segment(
+                    route_id=route_id,
+                    segment_number=stop_number - 1,
+                    from_stop_id=route_stops[-2][0],
+                    to_stop_id=stop_id,
+                    name=name,
+                    coordinates=coordinates[last_stop_index : index + 1],
+                    distance_meters=distance_since_stop,
+                    verified_at=verification_date,
+                )
+            )
+            stop_number += 1
+            last_stop_index = index
+            distance_since_stop = 0.0
+
+        end_point = coordinates[-1]
+        end_id = f"{route_id}:send"
+        stops[end_id] = _stop(end_id, f"Tujuan {name}", end_point)
+        route_stops.append((end_id, end_point))
+        segments.append(
+            _segment(
+                route_id=route_id,
+                segment_number=stop_number - 1,
+                from_stop_id=route_stops[-2][0],
+                to_stop_id=end_id,
+                name=name,
+                coordinates=coordinates[last_stop_index:],
+                distance_meters=distance_since_stop,
+                verified_at=verification_date,
+            )
+        )
+
+    return TransitDataset(stops=list(stops.values()), segments=segments)
+
+
+def _is_angkot_relation(tags: dict[str, Any]) -> bool:
+    route_type = str(tags.get("route", "")).casefold()
+    if route_type in {"share_taxi", "minibus"}:
+        return True
+    if route_type != "bus":
+        return False
+    description = " ".join(
+        str(tags.get(key, "")).casefold() for key in ("name", "operator", "network", "description")
+    )
+    return any(keyword in description for keyword in ANGKOT_KEYWORDS)
+
+
+def _relation_coordinates(relation: dict[str, Any]) -> list[tuple[float, float]]:
+    """Join relation ways in member order, reversing a way when necessary."""
+    coordinates: list[tuple[float, float]] = []
+    for member in relation.get("members", []):
+        if member.get("type") != "way" or not member.get("geometry"):
+            continue
+        line = [(float(point["lon"]), float(point["lat"])) for point in member["geometry"]]
+        if len(line) < 2:
+            continue
+        if coordinates and _coordinate_distance(coordinates[-1], line[-1]) < _coordinate_distance(
+            coordinates[-1], line[0]
+        ):
+            line.reverse()
+        if coordinates and coordinates[-1] == line[0]:
+            line = line[1:]
+        coordinates.extend(line)
+    return coordinates
+
+
+def _stop(stop_id: str, name: str, point: tuple[float, float]) -> Stop:
+    return Stop(
+        id=stop_id,
+        name=name,
+        lat=point[1],
+        lng=point[0],
+        modes=[TransportMode.ANGKOT],
+    )
+
+
+def _segment(
+    *,
+    route_id: str,
+    segment_number: int,
+    from_stop_id: str,
+    to_stop_id: str,
+    name: str,
+    coordinates: list[tuple[float, float]],
+    distance_meters: float,
+    verified_at: date,
+) -> Segment:
+    return Segment(
+        id=f"{route_id}:g{segment_number}",
+        route_id=route_id,
+        from_stop_id=from_stop_id,
+        to_stop_id=to_stop_id,
+        mode=TransportMode.ANGKOT,
+        service_category=ServiceCategory.FEEDER,
+        service_name=name,
+        avg_duration_min=round(max(1.0, distance_meters / 300.0), 1),
+        fare=5000,
+        fare_product_id="angkot:regular",
+        data_confidence=DataConfidence.COMMUNITY,
+        last_verified_at=verified_at,
+        color="FF9800",
+        coordinates=coordinates,
+    )
+
 
 def _normalize(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "-", normalized.casefold()).strip("-")
+
+
+def _coordinate_distance(first: tuple[float, float], second: tuple[float, float]) -> float:
+    return _distance_meters(first[1], first[0], second[1], second[0])
+
 
 def _distance_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     delta_lat = radians(lat2 - lat1)
@@ -21,129 +186,3 @@ def _distance_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> floa
         cos(radians(lat1)) * cos(radians(lat2)) * sin(delta_lng / 2) ** 2
     )
     return 2 * 6_371_008.8 * asin(sqrt(value))
-
-def parse_osm_relations(relations: list[dict[str, Any]]) -> TransitDataset:
-    stops: dict[str, Stop] = {}
-    segments: list[Segment] = []
-
-    for relation in relations:
-        tags = relation.get("tags", {})
-        ref = tags.get("ref") or tags.get("name") or "Unknown"
-        name = tags.get("name") or f"Angkot {ref}"
-        
-        # Build continuous geometry from members
-        coordinates: list[tuple[float, float]] = []
-        for member in relation.get("members", []):
-            if member.get("type") == "way" and "geometry" in member:
-                for pt in member["geometry"]:
-                    coord = (float(pt["lon"]), float(pt["lat"]))
-                    # prevent consecutive duplicates
-                    if not coordinates or coordinates[-1] != coord:
-                        coordinates.append(coord)
-                        
-        if len(coordinates) < 2:
-            continue
-            
-        route_slug = _normalize(ref)
-        rel_id = relation.get("id", "0")
-        route_id = f"angkot:{route_slug}_{rel_id}"
-        
-        # Generate virtual stops along the route
-        route_stops: list[tuple[str, tuple[float, float]]] = []
-        
-        # Always add the first point
-        start_pt = coordinates[0]
-        start_id = f"{route_id}:stop_0"
-        route_stops.append((start_id, start_pt))
-        stops[start_id] = Stop(
-            id=start_id,
-            name=f"Titik Awal {name}",
-            lat=start_pt[1],
-            lng=start_pt[0],
-            modes=[TransportMode.ANGKOT],
-        )
-        
-        distance_since_last_stop = 0.0
-        last_stop_idx = 0
-        
-        for i in range(1, len(coordinates)):
-            pt1 = coordinates[i-1]
-            pt2 = coordinates[i]
-            dist = _distance_meters(pt1[1], pt1[0], pt2[1], pt2[0])
-            distance_since_last_stop += dist
-            
-            # If we traveled far enough, place a virtual stop
-            if distance_since_last_stop >= VIRTUAL_STOP_INTERVAL_METERS and i < len(coordinates) - 1:
-                stop_id = f"{route_id}:stop_{i}"
-                route_stops.append((stop_id, pt2))
-                stops[stop_id] = Stop(
-                    id=stop_id,
-                    name=f"Perhentian {name} (KM {round(len(route_stops) * 0.8, 1)})",
-                    lat=pt2[1],
-                    lng=pt2[0],
-                    modes=[TransportMode.ANGKOT],
-                )
-                
-                # Build segment from last stop to this stop
-                sub_coords = coordinates[last_stop_idx:i+1]
-                duration_min = round(max(1.0, distance_since_last_stop / 300.0), 1) # approx 18 km/h
-                
-                from_id = route_stops[-2][0]
-                segments.append(
-                    Segment(
-                        id=f"{route_id}:seg_{last_stop_idx}_{i}",
-                        route_id=route_id,
-                        from_stop_id=from_id,
-                        to_stop_id=stop_id,
-                        mode=TransportMode.ANGKOT,
-                        service_category=ServiceCategory.FEEDER,
-                        service_name=name,
-                        avg_duration_min=duration_min,
-                        fare=5000,
-                        fare_product_id="angkot:regular",
-                        data_confidence=DataConfidence.COMMUNITY,
-                        last_verified_at=VERIFIED_AT,
-                        color="FF9800", # Orange for angkot
-                        coordinates=sub_coords,
-                    )
-                )
-                
-                distance_since_last_stop = 0.0
-                last_stop_idx = i
-                
-        # Add the final destination stop
-        end_pt = coordinates[-1]
-        end_id = f"{route_id}:stop_end"
-        route_stops.append((end_id, end_pt))
-        stops[end_id] = Stop(
-            id=end_id,
-            name=f"Tujuan {name}",
-            lat=end_pt[1],
-            lng=end_pt[0],
-            modes=[TransportMode.ANGKOT],
-        )
-        
-        # Build the final segment
-        if last_stop_idx < len(coordinates) - 1:
-            sub_coords = coordinates[last_stop_idx:]
-            duration_min = round(max(1.0, distance_since_last_stop / 300.0), 1)
-            segments.append(
-                Segment(
-                    id=f"{route_id}:seg_{last_stop_idx}_end",
-                    route_id=route_id,
-                    from_stop_id=route_stops[-2][0],
-                    to_stop_id=end_id,
-                    mode=TransportMode.ANGKOT,
-                    service_category=ServiceCategory.FEEDER,
-                    service_name=name,
-                    avg_duration_min=duration_min,
-                    fare=5000,
-                    fare_product_id="angkot:regular",
-                    data_confidence=DataConfidence.COMMUNITY,
-                    last_verified_at=VERIFIED_AT,
-                    color="FF9800",
-                    coordinates=sub_coords,
-                )
-            )
-
-    return TransitDataset(stops=list(stops.values()), segments=segments)

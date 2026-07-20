@@ -9,7 +9,7 @@ from app.core.config import get_settings
 settings = get_settings()
 db_url = settings.database_url
 
-# Force IPv4 for Supabase Connection Pooler because uvloop's DNS resolver 
+# Force IPv4 for Supabase Connection Pooler because uvloop's DNS resolver
 # sometimes defaults to IPv6 inside Docker which causes ENETUNREACH.
 parsed_url = urllib.parse.urlparse(db_url)
 if parsed_url.hostname and "supabase.com" in parsed_url.hostname:
@@ -21,6 +21,7 @@ if parsed_url.hostname and "supabase.com" in parsed_url.hostname:
 
 engine = create_async_engine(db_url, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with SessionLocal() as session:
