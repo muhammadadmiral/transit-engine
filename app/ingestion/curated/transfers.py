@@ -6,7 +6,9 @@ import unicodedata
 from datetime import date
 from math import asin, cos, radians, sin, sqrt
 
-from sqlalchemy import func, select
+from geoalchemy2 import Geography
+from sqlalchemy import cast, func, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import StopRecord
@@ -56,7 +58,7 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
                 StopRecord.mode,
                 func.ST_Y(StopRecord.location),
                 func.ST_X(StopRecord.location),
-            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot")))
+            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")))
         )
     ).tuples()
     stops = {
@@ -74,6 +76,30 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             distance_meters = _distance_meters(rail[2], rail[3], transit[2], transit[3])
             if _is_valid_transjakarta_transfer(rail_id, rail[0], transit[0], distance_meters):
                 pairs.add(tuple(sorted((rail_id, transit_id))))
+
+    # Spatial Proximity Matching (<= 150m) for everything
+    S1 = aliased(StopRecord)
+    S2 = aliased(StopRecord)
+    
+    spatial_pairs_query = select(
+        S1.id, S2.id
+    ).join(
+        S2,
+        func.ST_DWithin(
+            S1.location,
+            S2.location,
+            0.001347 # 150 meters in degrees at equator
+        )
+    ).where(
+        S1.id < S2.id,
+        S1.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")),
+        S2.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")),
+    )
+    
+    spatial_pairs_rows = (await session.execute(spatial_pairs_query)).tuples()
+    for s1_id, s2_id in spatial_pairs_rows:
+        if s1_id in stops and s2_id in stops:
+            pairs.add(tuple(sorted((s1_id, s2_id))))
 
     return [
         segment
