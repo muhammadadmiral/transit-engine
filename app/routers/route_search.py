@@ -1,20 +1,28 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import get_session
+from app.db.transit_repository import load_segments
 from app.models.schema import RouteSearchRequest, RouteSearchResponse, SearchCriteria, Segment
 from app.routing.graph import build_graph
 from app.routing.pathfinder import RouteNotFoundError, find_route
 
 router = APIRouter(prefix="/route-search", tags=["route-search"])
 
-
-def get_segments() -> list[Segment]:
-    """Database-backed segment loading will replace this dependency in the ingestion milestone."""
-    return []
-
-
 @router.post("", response_model=RouteSearchResponse)
-async def route_search(request: RouteSearchRequest) -> RouteSearchResponse:
-    graph = build_graph(get_segments())
+async def route_search(
+    request: RouteSearchRequest, session: AsyncSession = Depends(get_session)
+) -> RouteSearchResponse:
+    try:
+        segments = await load_segments(session)
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Transit data is temporarily unavailable",
+        ) from error
+
+    graph = build_graph(segments)
     try:
         options = [
             find_route(

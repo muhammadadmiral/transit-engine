@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@db:5432/transit_engine"
     cors_allowed_origins: str = "http://localhost:3000"
     data_refresh_secret: str = ""
+    transjakarta_gtfs_url: str = "https://gtfs.transjakarta.co.id/files/file_gtfs.zip"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

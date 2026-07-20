@@ -35,12 +35,16 @@ def find_route(
     weight = segment_weight(criteria)
 
     def state_weight(
-        _: tuple[str, str | None, int],
+        source: tuple[str, str | None, int],
         __: tuple[str, str | None, int],
         data: dict[str, object],
     ) -> float:
         segment = data.get("segment")
-        return 0.0 if segment is None else weight(segment)  # type: ignore[arg-type]
+        if segment is None:
+            return 0.0
+        if criteria is SearchCriteria.CHEAPEST and source[1] == segment.route_id:
+            return 0.0
+        return weight(segment)  # type: ignore[arg-type]
 
     best_path: list[tuple[str, str | None, int]] | None = None
     best_cost = float("inf")
@@ -60,32 +64,33 @@ def find_route(
     return RouteOption(
         criteria=criteria,
         total_duration_min=sum(segment.avg_duration_min for segment in segments),
-        total_fare=sum(segment.fare for segment in segments),
+        total_fare=_total_fare(segments),
         transfer_count=best_path[-1][2],
         segments=segments,
         geojson=build_feature_collection(segments),
     )
 
 
-def _build_state_graph(
-    graph: nx.MultiDiGraph, origin_stop_id: str, max_transfers: int
-) -> nx.DiGraph:
+def _build_state_graph(graph: nx.MultiDiGraph, origin_stop_id: str, max_transfers: int) -> nx.DiGraph:
     state_graph = nx.DiGraph()
     source = (origin_stop_id, None, 0)
     state_graph.add_node(source)
+    route_ids = {segment.route_id for segment in _segments(graph)}
 
     for _, _, edge_data in graph.edges(data=True):
         segment: Segment = edge_data["segment"]
-        for previous_mode, transfers in itertools.product(
-            [None, *list(type(segment.mode))], range(max_transfers + 1)
+        for previous_route_id, transfers in itertools.product(
+            [None, *route_ids], range(max_transfers + 1)
         ):
-            if segment.from_stop_id != origin_stop_id and previous_mode is None:
+            if segment.from_stop_id != origin_stop_id and previous_route_id is None:
                 continue
-            next_transfers = transfers + int(previous_mode not in (None, segment.mode))
+            next_transfers = transfers + int(
+                previous_route_id is not None and previous_route_id != segment.route_id
+            )
             if next_transfers > max_transfers:
                 continue
-            from_state = (segment.from_stop_id, previous_mode, transfers)
-            to_state = (segment.to_stop_id, segment.mode, next_transfers)
+            from_state = (segment.from_stop_id, previous_route_id, transfers)
+            to_state = (segment.to_stop_id, segment.route_id, next_transfers)
             state_graph.add_edge(from_state, to_state, segment=segment)
     return state_graph
 
@@ -93,3 +98,17 @@ def _build_state_graph(
 def _segments_from_state_path(
     graph: nx.DiGraph, states: list[tuple[str, str | None, int]]) -> list[Segment]:
     return [graph[source][target]["segment"] for source, target in zip(states, states[1:], strict=True)]
+
+
+def _segments(graph: nx.MultiDiGraph) -> list[Segment]:
+    return [edge_data["segment"] for _, _, edge_data in graph.edges(data=True)]
+
+
+def _total_fare(segments: list[Segment]) -> int:
+    total = 0
+    previous_route_id: str | None = None
+    for segment in segments:
+        if segment.route_id != previous_route_id:
+            total += segment.fare
+            previous_route_id = segment.route_id
+    return total

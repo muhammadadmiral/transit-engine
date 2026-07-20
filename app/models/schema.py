@@ -42,6 +42,7 @@ class Stop(SchemaModel):
 
 class Segment(SchemaModel):
     id: str
+    route_id: str
     from_stop_id: str
     to_stop_id: str
     mode: TransportMode
@@ -97,3 +98,8 @@ class HealthResponse(SchemaModel):
     status: Literal["ok"] = "ok"
     environment: str
 
+
+class DataRefreshResponse(SchemaModel):
+    source: str
+    stops_imported: int
+    segments_imported: int

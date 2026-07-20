@@ -20,6 +20,7 @@ class SegmentRecord(Base):
     __tablename__ = "segments"
 
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    route_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     from_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
     to_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
     mode: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -29,4 +30,3 @@ class SegmentRecord(Base):
     last_verified_at: Mapped[date] = mapped_column(Date, nullable=False)
     color: Mapped[str] = mapped_column(String(6), nullable=False)
     geometry: Mapped[object] = mapped_column(Geometry("LINESTRING", srid=4326), nullable=False)
-
