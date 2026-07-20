@@ -33,7 +33,7 @@ Repo ini **satu-satunya pemilik akses database** di proyek TransHub — frontend
 | **Migrasi Skema** | Alembic |
 | **Testing** | `pytest` |
 | **Lint & Format** | `ruff`, `black` |
-| **Deployment** | HuggingFace Spaces (Docker SDK) |
+| **Deployment** | FastAPI Cloud |
 
 ---
 
@@ -82,7 +82,7 @@ app/
 
 ## 🌐 Deployment
 
-Service ini di-deploy ke **HuggingFace Spaces** (Docker SDK) karena gratis. Karena Spaces free tier bisa *sleep* setelah idle, repo ini menjalankan **GitHub Actions scheduled workflow** yang melakukan ping berkala ke `GET /health` untuk mencegah cold-start mengganggu pengguna.
+Service ini di-deploy ke **FastAPI Cloud**. Push ke `dev` men-deploy app development dan push ke `main` men-deploy app production, setelah Alembic migration untuk database lingkungan tersebut berhasil. Detail secret dan setup ada di [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ---
 
