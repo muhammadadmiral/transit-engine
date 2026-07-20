@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 
 # Bounding boxes for Jabodetabek regions
 REGIONS = {
-    # "Depok": "-6.44, 106.75, -6.34, 106.87",
-    # "Bogor": "-6.70, 106.60, -6.44, 107.00",
+    "Depok": "-6.44, 106.75, -6.34, 106.87",
+    "Bogor": "-6.70, 106.60, -6.44, 107.00",
     "Tangerang": "-6.35, 106.40, -6.05, 106.75",
     "Bekasi": "-6.40, 106.90, -6.00, 107.30",
 }
