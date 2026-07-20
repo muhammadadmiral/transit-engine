@@ -3,6 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
+from math import isfinite
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -29,6 +30,7 @@ def read_feed(path: Path, verified_at: date | None = None) -> TransitDataset:
         routes=feed.routes,
         trips=feed.trips,
         stop_times=feed.stop_times,
+        shapes=feed.shapes,
         fare_attributes=feed.fare_attributes,
         fare_rules=feed.fare_rules,
         verified_at=verified_at or date.today(),
@@ -41,6 +43,7 @@ def normalize_feed(
     routes: Any,
     trips: Any,
     stop_times: Any,
+    shapes: Any,
     fare_attributes: Any,
     fare_rules: Any,
     verified_at: date,
@@ -49,6 +52,7 @@ def normalize_feed(
     stop_rows = {row["stop_id"]: row for row in stops.to_dict("records")}
     route_rows = {row["route_id"]: row for row in routes.to_dict("records")}
     trip_rows = {row["trip_id"]: row for row in trips.to_dict("records")}
+    shape_points = _shape_points(shapes)
     fares = {row["fare_id"]: int(float(row["price"])) for row in fare_attributes.to_dict("records")}
     route_fares = {
         row["route_id"]: fares[row["fare_id"]]
@@ -69,6 +73,7 @@ def normalize_feed(
     ]
 
     durations: dict[tuple[str, str, str, str], list[float]] = defaultdict(list)
+    geometries: dict[tuple[str, str, str, str], list[tuple[float, float]]] = {}
     ordered_stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
     for trip_id, trip_stop_times in ordered_stop_times.groupby("trip_id"):
         trip = trip_rows.get(trip_id)
@@ -76,6 +81,7 @@ def normalize_feed(
             continue
         route_id = trip["route_id"]
         direction_id = str(trip.get("direction_id") or "0")
+        trip_shape = shape_points.get(trip.get("shape_id"), [])
         times = trip_stop_times.to_dict("records")
         for previous, current in zip(times, times[1:], strict=False):
             duration = _duration_minutes(
@@ -86,7 +92,18 @@ def normalize_feed(
             from_stop_id = previous["stop_id"]
             to_stop_id = current["stop_id"]
             if from_stop_id in stop_rows and to_stop_id in stop_rows:
-                durations[(route_id, direction_id, from_stop_id, to_stop_id)].append(duration)
+                key = (route_id, direction_id, from_stop_id, to_stop_id)
+                durations[key].append(duration)
+                geometries.setdefault(
+                    key,
+                    _segment_coordinates(
+                        trip_shape,
+                        previous.get("shape_dist_traveled"),
+                        current.get("shape_dist_traveled"),
+                        stop_rows[from_stop_id],
+                        stop_rows[to_stop_id],
+                    ),
+                )
 
     segments = [
         _build_segment(
@@ -97,6 +114,7 @@ def normalize_feed(
             avg_duration_min=mean(values),
             fare=route_fares.get(route_id, DEFAULT_FARE),
             color=_route_color(route_rows.get(route_id, {})),
+            coordinates=geometries[(route_id, direction_id, from_stop_id, to_stop_id)],
             verified_at=verified_at,
         )
         for (route_id, direction_id, from_stop_id, to_stop_id), values in durations.items()
@@ -113,6 +131,7 @@ def _build_segment(
     avg_duration_min: float,
     fare: int,
     color: str,
+    coordinates: list[tuple[float, float]],
     verified_at: date,
 ) -> Segment:
     from_stop_id = from_stop["stop_id"]
@@ -128,10 +147,7 @@ def _build_segment(
         data_confidence=DataConfidence.OFFICIAL,
         last_verified_at=verified_at,
         color=color,
-        coordinates=[
-            (float(from_stop["stop_lon"]), float(from_stop["stop_lat"])),
-            (float(to_stop["stop_lon"]), float(to_stop["stop_lat"])),
-        ],
+        coordinates=coordinates,
     )
 
 
@@ -154,3 +170,45 @@ def _route_color(route: dict[str, Any]) -> str:
     if len(color) == 6 and all(character in "0123456789ABCDEF" for character in color):
         return color
     return DEFAULT_COLOR
+
+
+def _shape_points(shapes: Any) -> dict[str, list[tuple[float, float, float]]]:
+    if shapes is None:
+        return {}
+    points: dict[str, list[tuple[float, float, float]]] = defaultdict(list)
+    ordered = shapes.sort_values(["shape_id", "shape_pt_sequence"])
+    for row in ordered.to_dict("records"):
+        distance = _finite_float(row.get("shape_dist_traveled"))
+        if distance is None:
+            continue
+        points[row["shape_id"]].append(
+            (distance, float(row["shape_pt_lon"]), float(row["shape_pt_lat"]))
+        )
+    return dict(points)
+
+
+def _segment_coordinates(
+    shape: list[tuple[float, float, float]],
+    start_distance: object,
+    end_distance: object,
+    from_stop: dict[str, Any],
+    to_stop: dict[str, Any],
+) -> list[tuple[float, float]]:
+    start = _finite_float(start_distance)
+    end = _finite_float(end_distance)
+    endpoints = [
+        (float(from_stop["stop_lon"]), float(from_stop["stop_lat"])),
+        (float(to_stop["stop_lon"]), float(to_stop["stop_lat"])),
+    ]
+    if start is None or end is None or end <= start:
+        return endpoints
+    between = [(lng, lat) for distance, lng, lat in shape if start < distance < end]
+    return [endpoints[0], *between, endpoints[1]]
+
+
+def _finite_float(value: object) -> float | None:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if isfinite(number) else None
