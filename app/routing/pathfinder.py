@@ -1,4 +1,5 @@
 from collections import deque
+from itertools import pairwise
 
 import networkx as nx
 
@@ -103,9 +104,7 @@ def _build_state_graph(
 def _segments_from_state_path(
     graph: nx.DiGraph, states: list[tuple[str, str | None, int]]
 ) -> list[Segment]:
-    return [
-        graph[source][target]["segment"] for source, target in zip(states, states[1:], strict=True)
-    ]
+    return [graph[source][target]["segment"] for source, target in pairwise(states)]
 
 
 def _total_fare(segments: list[Segment]) -> int:
