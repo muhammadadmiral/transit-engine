@@ -19,7 +19,7 @@ async def route_search(
 ) -> RouteSearchResponse:
     try:
         graph = await get_routing_graph(session)
-    except SQLAlchemyError as error:
+    except (OSError, SQLAlchemyError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Transit data is temporarily unavailable",

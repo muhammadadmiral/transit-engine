@@ -29,6 +29,39 @@ def test_live_network_layers_and_representative_multimodal_routes() -> None:
         assert angkot_stops.status_code == 200
         assert angkot_stops.json()["total"] > 0
 
+        nearby = client.get(
+            "/stops/nearby",
+            params={
+                "lat": -6.360531,
+                "lng": 106.831775,
+                "radiusMeters": 500,
+                "purpose": "origin",
+                "limit": 10,
+            },
+        )
+        assert nearby.status_code == 200
+        nearby_items = nearby.json()
+        assert nearby_items
+        assert nearby_items == sorted(nearby_items, key=lambda item: item["distanceMeters"])
+        assert all(item["canBoard"] for item in nearby_items)
+        assert any(item["id"] == "bikun:stasiun-ui" for item in nearby_items)
+
+        empty_nearby = client.get(
+            "/stops/nearby",
+            params={"lat": 0, "lng": 0, "radiusMeters": 50},
+        )
+        assert empty_nearby.status_code == 200
+        assert empty_nearby.json() == []
+
+        unknown_origin = client.post(
+            "/route-search",
+            json={
+                "originStopId": "not:a:real:stop",
+                "destinationStopId": "krl:bogor",
+            },
+        )
+        assert unknown_origin.status_code == 404
+
         geometry = client.get("/network/routes/mrt:north-south/geometry")
         assert geometry.status_code == 200
         assert all(

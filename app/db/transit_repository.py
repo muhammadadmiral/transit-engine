@@ -2,11 +2,19 @@
 
 import json
 
-from sqlalchemy import case, func, select
+from geoalchemy2 import Geography
+from sqlalchemy import case, cast, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import SegmentRecord, StopRecord
-from app.models.schema import RouteOverview, Segment, Stop, TransportMode
+from app.models.schema import (
+    NearbyStop,
+    NearbyStopPurpose,
+    RouteOverview,
+    Segment,
+    Stop,
+    TransportMode,
+)
 
 
 async def load_segments(session: AsyncSession) -> list[Segment]:
@@ -73,6 +81,80 @@ async def search_stops(session: AsyncSession, query: str, limit: int) -> list[St
     return [
         Stop(id=stop_id, name=name, lat=lat, lng=lng, modes=[mode])
         for stop_id, name, mode, lat, lng in result.tuples()
+    ]
+
+
+async def find_nearby_stops(
+    session: AsyncSession,
+    *,
+    lat: float,
+    lng: float,
+    radius_meters: int,
+    limit: int,
+    mode: TransportMode | None,
+    purpose: NearbyStopPurpose,
+) -> list[NearbyStop]:
+    """Return directionally usable stops ordered by geodesic distance."""
+    pin = cast(func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326), Geography(srid=4326))
+    stop_location = cast(StopRecord.location, Geography(srid=4326))
+    distance = func.ST_Distance(stop_location, pin).label("distance_meters")
+    can_board = exists(
+        select(SegmentRecord.id).where(
+            SegmentRecord.from_stop_id == StopRecord.id,
+            SegmentRecord.mode != TransportMode.WALK.value,
+        )
+    )
+    can_alight = exists(
+        select(SegmentRecord.id).where(
+            SegmentRecord.to_stop_id == StopRecord.id,
+            SegmentRecord.mode != TransportMode.WALK.value,
+        )
+    )
+    conditions = [func.ST_DWithin(stop_location, pin, radius_meters)]
+    if mode is not None:
+        conditions.append(StopRecord.mode == mode.value)
+    if purpose is NearbyStopPurpose.ORIGIN:
+        conditions.append(can_board)
+    elif purpose is NearbyStopPurpose.DESTINATION:
+        conditions.append(can_alight)
+
+    statement = (
+        select(
+            StopRecord.id,
+            StopRecord.name,
+            StopRecord.mode,
+            func.ST_Y(StopRecord.location),
+            func.ST_X(StopRecord.location),
+            distance,
+            can_board.label("can_board"),
+            can_alight.label("can_alight"),
+        )
+        .where(*conditions)
+        .order_by(distance, StopRecord.id)
+        .limit(limit)
+    )
+    rows = (await session.execute(statement)).tuples()
+    return [
+        NearbyStop(
+            id=stop_id,
+            name=name,
+            lat=stop_lat,
+            lng=stop_lng,
+            modes=[stored_mode],
+            distance_meters=round(float(distance_meters), 1),
+            can_board=bool(boardable),
+            can_alight=bool(alightable),
+        )
+        for (
+            stop_id,
+            name,
+            stored_mode,
+            stop_lat,
+            stop_lng,
+            distance_meters,
+            boardable,
+            alightable,
+        ) in rows
     ]
 
 

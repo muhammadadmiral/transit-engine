@@ -56,7 +56,7 @@ Alur utama:
 5. pengguna membuka detail itinerary dan melihat jalur di peta;
 6. walking transfer ditampilkan eksplisit sebagai langkah, bukan disembunyikan.
 
-Pencarian alamat bebas dan first/last-mile dari koordinat arbitrer belum menjadi tanggung jawab routing engine saat ini. MVP memilih stop yang ada di jaringan. Geocoding dan pemetaan lokasi ke stop terdekat adalah fase lanjutan.
+MVP dapat menerjemahkan pin peta menjadi beberapa kandidat stop terdekat yang directionally usable. Route search tetap bekerja dari stop ke stop; connector first/last-mile dari pin belum dihitung sebagai bagian durasi atau itinerary backend. Geocoding nama tempat dan pedestrian turn-by-turn tetap fase lanjutan.
 
 ## 6. Supported network
 
@@ -129,7 +129,7 @@ Data OSM disaring agar generic bus tidak salah diklasifikasikan sebagai angkot. 
 
 ### Phase 2 — better discovery and last mile
 
-- Geocoding lokasi dan pencarian stop terdekat.
+- Geocoding nama tempat dan integrasi first/last-mile ke route search.
 - Perluasan angkot berdasarkan koridor prioritas.
 - Kanal pelaporan koreksi data.
 - Snapshot/version metadata di API.

@@ -3,6 +3,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 load_dotenv(".env")
 
@@ -17,7 +18,12 @@ def test_transjabodetabek_real_data_exists():
     db_url_sync = db_url.replace("+asyncpg", "")
     engine = create_engine(db_url_sync)
 
-    with engine.connect() as conn:
+    try:
+        connection = engine.connect()
+    except SQLAlchemyError:
+        raise AssertionError("Database integration connection failed; DSN hidden") from None
+
+    with connection as conn:
         res_stops = conn.execute(text("SELECT COUNT(*) FROM stops")).scalar()
         res_segments = conn.execute(text("SELECT COUNT(*) FROM segments")).scalar()
 
@@ -36,7 +42,7 @@ def test_transjabodetabek_real_data_exists():
         ).fetchall()
 
         # Pastikan data perbatasan juga ada
-        assert len(border_stops) > 0, "Tidak ada data rute TransJakarta perbatasan (Bodetabek)!"
+        assert len(border_stops) > 0, "Tidak ada data rute perbatasan Bodetabek!"
 
         print("\n=== HASIL SANITY CHECK DATABASE ===")
         print(f"Total Halte/Stasiun: {res_stops}")

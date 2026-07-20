@@ -25,6 +25,11 @@ def find_route(
     payment_profile: PaymentProfile = PaymentProfile.STANDARD,
     fare_catalog: FareCatalog = DEFAULT_FARE_CATALOG,
 ) -> RouteOption:
+    missing_stops = [
+        stop_id for stop_id in (origin_stop_id, destination_stop_id) if stop_id not in graph
+    ]
+    if missing_stops:
+        raise RouteNotFoundError(f"Unknown stop: {missing_stops[0]}")
     if origin_stop_id == destination_stop_id:
         fare_quote = quote_journey(
             [],

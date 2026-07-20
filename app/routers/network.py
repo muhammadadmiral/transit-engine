@@ -35,7 +35,7 @@ async def network_stops(
         items, total = await list_network_stops(
             session, query=q, mode=mode, limit=limit, offset=offset
         )
-    except SQLAlchemyError as error:
+    except (OSError, SQLAlchemyError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Transit network is temporarily unavailable",
@@ -52,7 +52,7 @@ async def network_routes(
 ) -> RouteListResponse:
     try:
         items, total = await list_route_overviews(session, mode=mode, limit=limit, offset=offset)
-    except SQLAlchemyError as error:
+    except (OSError, SQLAlchemyError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Transit network is temporarily unavailable",
@@ -67,7 +67,7 @@ async def route_geometry(
 ) -> FeatureCollection:
     try:
         segments = await load_route_segments(session, route_id)
-    except SQLAlchemyError as error:
+    except (OSError, SQLAlchemyError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Transit network is temporarily unavailable",

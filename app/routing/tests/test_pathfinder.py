@@ -59,6 +59,14 @@ def test_finds_fastest_and_cheapest_routes_independently() -> None:
     assert cheapest.total_fare == 3500
 
 
+@pytest.mark.parametrize("origin,destination", [("unknown", "destination"), ("origin", "unknown")])
+def test_rejects_unknown_origin_or_destination(origin: str, destination: str) -> None:
+    graph = build_graph([segment("ride", "origin", "destination", TransportMode.MRT, 4, 4000)])
+
+    with pytest.raises(RouteNotFoundError, match="Unknown stop"):
+        find_route(graph, origin, destination, SearchCriteria.FASTEST, max_transfers=0)
+
+
 def test_charges_once_and_does_not_count_a_transfer_within_one_route() -> None:
     graph = build_graph(
         [

@@ -66,12 +66,24 @@ class PaymentProfile(StrEnum):
     JAKLINGKO_INTEGRATED = "jaklingko_integrated"
 
 
+class NearbyStopPurpose(StrEnum):
+    ANY = "any"
+    ORIGIN = "origin"
+    DESTINATION = "destination"
+
+
 class Stop(SchemaModel):
     id: str
     name: str
     lat: Annotated[float, Field(ge=-90, le=90)]
     lng: Annotated[float, Field(ge=-180, le=180)]
     modes: list[TransportMode] = Field(min_length=1)
+
+
+class NearbyStop(Stop):
+    distance_meters: Annotated[float, Field(ge=0)]
+    can_board: bool
+    can_alight: bool
 
 
 class StopListResponse(SchemaModel):
@@ -123,8 +135,8 @@ class RouteListResponse(SchemaModel):
 
 
 class RouteSearchRequest(SchemaModel):
-    origin_stop_id: str
-    destination_stop_id: str
+    origin_stop_id: str = Field(min_length=1, max_length=120)
+    destination_stop_id: str = Field(min_length=1, max_length=120)
     max_transfers: Annotated[int, Field(ge=0, le=5)] = 3
     departure_at: datetime | None = None
     payment_profile: PaymentProfile = PaymentProfile.STANDARD
