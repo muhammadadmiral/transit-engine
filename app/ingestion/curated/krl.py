@@ -10,6 +10,7 @@ from datetime import date
 from itertools import pairwise
 from math import asin, cos, radians, sin, sqrt
 
+from app.ingestion.curated.geometry import segment_geometry
 from app.ingestion.gtfs.transjakarta import TransitDataset
 from app.models.schema import (
     DataConfidence,
@@ -273,11 +274,14 @@ def _segment(
     _, to_lat, to_lng = KRL_STATIONS[to_id]
     distance_km = _distance_km(from_lat, from_lng, to_lat, to_lng)
     duration_min = round(max(2.2, distance_km / 48 * 60 + 0.8), 1)
+    from_stop_id = f"krl:{from_id}"
+    to_stop_id = f"krl:{to_id}"
+    fallback = [(from_lng, from_lat), (to_lng, to_lat)]
     return Segment(
         id=f"{route_id}:{from_id}:{to_id}",
         route_id=route_id,
-        from_stop_id=f"krl:{from_id}",
-        to_stop_id=f"krl:{to_id}",
+        from_stop_id=from_stop_id,
+        to_stop_id=to_stop_id,
         mode=TransportMode.KRL,
         service_category=ServiceCategory.MAIN,
         service_name=service_name,
@@ -287,7 +291,7 @@ def _segment(
         data_confidence=DataConfidence.COMMUNITY,
         last_verified_at=VERIFIED_AT,
         color=color,
-        coordinates=[(from_lng, from_lat), (to_lng, to_lat)],
+        coordinates=segment_geometry(route_id, from_stop_id, to_stop_id, fallback),
     )
 
 

@@ -8,6 +8,7 @@ stations are excluded until commercial operations begin.
 from datetime import date
 from itertools import pairwise
 
+from app.ingestion.curated.geometry import segment_geometry
 from app.ingestion.gtfs.transjakarta import TransitDataset
 from app.models.schema import (
     DataConfidence,
@@ -247,11 +248,14 @@ def _segment(
 ) -> Segment:
     from_id, _, from_lat, from_lng = from_station
     to_id, _, to_lat, to_lng = to_station
+    from_stop_id = f"{namespace}:{from_id}"
+    to_stop_id = f"{namespace}:{to_id}"
+    fallback = [(from_lng, from_lat), (to_lng, to_lat)]
     return Segment(
         id=f"{route_id}:{from_id}:{to_id}",
         route_id=route_id,
-        from_stop_id=f"{namespace}:{from_id}",
-        to_stop_id=f"{namespace}:{to_id}",
+        from_stop_id=from_stop_id,
+        to_stop_id=to_stop_id,
         mode=mode,
         service_category=ServiceCategory.MAIN,
         service_name=service_name,
@@ -261,5 +265,5 @@ def _segment(
         data_confidence=data_confidence,
         last_verified_at=VERIFIED_AT,
         color=color,
-        coordinates=[(from_lng, from_lat), (to_lng, to_lat)],
+        coordinates=segment_geometry(route_id, from_stop_id, to_stop_id, fallback),
     )
