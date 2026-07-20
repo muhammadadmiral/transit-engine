@@ -20,6 +20,13 @@ from app.models.schema import (
     Segment,
 )
 
+JAKLINGKO_ELIGIBLE_PRODUCTS = {
+    "transjakarta:regular",
+    "mrt-jakarta:regular",
+    "lrt-jakarta:regular",
+}
+JAKLINGKO_SOURCE_URL = "https://jaklingkoindonesia.co.id/faq-tarif-integrasi/"
+
 
 @dataclass(frozen=True)
 class FlatFareRule:
@@ -104,14 +111,16 @@ def quote_journey(
             components=[],
         )
 
-    components = [_quote_ride(ride, catalog, departure_at) for ride in _fare_rides(segments)]
-    statuses = {component.status for component in components}
-    status = _combined_status(statuses)
+    rides = _fare_rides(segments)
+    components = [_quote_ride(ride, catalog, departure_at) for ride in rides]
     assumptions = []
     if payment_profile is PaymentProfile.JAKLINGKO_INTEGRATED:
-        assumptions.append(
-            "Integrated-fare eligibility is not applied yet; standard published fares are shown."
+        components, integrated_assumption = _apply_jaklingko_integrated_fare(
+            segments, rides, components
         )
+        assumptions.append(integrated_assumption)
+    statuses = {component.status for component in components}
+    status = _combined_status(statuses)
     return FareQuote(
         status=status,
         estimated_amount=sum(component.estimated_amount for component in components),
@@ -253,6 +262,49 @@ def _combined_status(statuses: set[FareStatus]) -> FareStatus:
         if status in statuses:
             return status
     return FareStatus.EXACT
+
+
+def _apply_jaklingko_integrated_fare(
+    segments: list[Segment],
+    rides: list[list[Segment]],
+    components: list[FareComponent],
+) -> tuple[list[FareComponent], str]:
+    eligible_products = {
+        ride[0].fare_product_id
+        for ride in rides
+        if ride[0].fare_product_id in JAKLINGKO_ELIGIBLE_PRODUCTS
+    }
+    duration = sum(segment.avg_duration_min for segment in segments)
+    if len(eligible_products) < 2 or duration > 180:
+        return components, (
+            "Standard fares shown because this journey does not contain at least two eligible "
+            "JakLingko modes within the modeled 180-minute window."
+        )
+
+    eligible_segments = [
+        segment for segment in segments if segment.fare_product_id in JAKLINGKO_ELIGIBLE_PRODUCTS
+    ]
+    distance = sum(_segment_distance_km(segment) for segment in eligible_segments)
+    amount = min(2500 + ceil(distance) * 250, 10000)
+    remaining = [
+        component
+        for component in components
+        if component.fare_product_id not in JAKLINGKO_ELIGIBLE_PRODUCTS
+    ]
+    integrated = FareComponent(
+        fare_product_id="jaklingko:integrated",
+        service_name="JakLingko Integrated Fare",
+        model=FareModel.TIME_DISTANCE_CAP,
+        status=FareStatus.ESTIMATED,
+        estimated_amount=amount,
+        min_amount=amount,
+        max_amount=amount,
+        source_url=JAKLINGKO_SOURCE_URL,
+    )
+    return [integrated, *remaining], (
+        "JakLingko integrated fare assumes an eligible payment channel and completion within "
+        "180 minutes; distance is estimated from route geometry."
+    )
 
 
 def _is_weekday_peak(value: datetime | None) -> bool:

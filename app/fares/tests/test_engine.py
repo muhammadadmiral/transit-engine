@@ -11,6 +11,7 @@ from app.fares.engine import (
 from app.models.schema import (
     DataConfidence,
     FareStatus,
+    PaymentProfile,
     Segment,
     ServiceCategory,
     TransportMode,
@@ -123,3 +124,40 @@ def test_time_dependent_fare_is_range_without_departure_and_peak_with_time() -> 
     assert without_time.max_amount > without_time.min_amount
     assert weekday_peak.status is FareStatus.ESTIMATED
     assert weekday_peak.estimated_amount == without_time.max_amount
+
+
+def test_jaklingko_profile_caps_an_eligible_multimodal_journey() -> None:
+    catalog = FareCatalog(
+        [
+            FlatFareRule("transjakarta:regular", 3500, "https://example.com/tj"),
+            FlatFareRule("lrt-jakarta:regular", 5000, "https://example.com/lrt"),
+        ]
+    )
+    tj = segment(
+        "tj",
+        "tj-route",
+        "a",
+        "b",
+        product_id="transjakarta:regular",
+        fare=3500,
+    )
+    lrt = segment(
+        "lrt",
+        "lrt-route",
+        "b",
+        "c",
+        product_id="lrt-jakarta:regular",
+        fare=5000,
+    )
+
+    standard = quote_journey([tj, lrt], catalog=catalog)
+    integrated = quote_journey(
+        [tj, lrt],
+        catalog=catalog,
+        payment_profile=PaymentProfile.JAKLINGKO_INTEGRATED,
+    )
+
+    assert standard.estimated_amount == 8500
+    assert integrated.status is FareStatus.ESTIMATED
+    assert integrated.estimated_amount <= 10000
+    assert integrated.components[0].fare_product_id == "jaklingko:integrated"
