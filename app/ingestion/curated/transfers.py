@@ -26,6 +26,7 @@ RAIL_TRANSFERS = (
     ("krl:sudirman", "mrt:dukuh-atas"),
     ("krl:sudirman", "lrt-jabodebek:dukuh-atas"),
     ("mrt:dukuh-atas", "lrt-jabodebek:dukuh-atas"),
+    ("krl:universitas-indonesia", "bikun:stasiun-ui"),
 )
 
 TRANSJAKARTA_ALIASES = {
@@ -55,7 +56,7 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
                 StopRecord.mode,
                 func.ST_Y(StopRecord.location),
                 func.ST_X(StopRecord.location),
-            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta")))
+            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot")))
         )
     ).tuples()
     stops = {
