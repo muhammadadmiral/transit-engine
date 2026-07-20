@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from math import ceil
+from zoneinfo import ZoneInfo
 
 from app.models.schema import (
     FareComponent,
@@ -57,7 +58,25 @@ class EstimatedRangeFareRule:
     model: FareModel = FareModel.ESTIMATED_RANGE
 
 
-FareRule = FlatFareRule | OdMatrixFareRule | DistanceBandFareRule | EstimatedRangeFareRule
+@dataclass(frozen=True)
+class TimeDistanceCapFareRule:
+    product_id: str
+    base_amount: int
+    base_distance_km: float
+    per_km_amount: int
+    offpeak_cap: int
+    peak_cap: int
+    source_url: str
+    model: FareModel = FareModel.TIME_DISTANCE_CAP
+
+
+FareRule = (
+    FlatFareRule
+    | OdMatrixFareRule
+    | DistanceBandFareRule
+    | EstimatedRangeFareRule
+    | TimeDistanceCapFareRule
+)
 
 
 class FareCatalog:
@@ -75,7 +94,6 @@ def quote_journey(
     departure_at: datetime | None = None,
     payment_profile: PaymentProfile = PaymentProfile.STANDARD,
 ) -> FareQuote:
-    del departure_at  # Reserved for time-dependent LRT Jabodebek rules.
     if not segments:
         return FareQuote(
             status=FareStatus.EXACT,
@@ -86,7 +104,7 @@ def quote_journey(
             components=[],
         )
 
-    components = [_quote_ride(ride, catalog) for ride in _fare_rides(segments)]
+    components = [_quote_ride(ride, catalog, departure_at) for ride in _fare_rides(segments)]
     statuses = {component.status for component in components}
     status = _combined_status(statuses)
     assumptions = []
@@ -132,7 +150,9 @@ def _fare_rides(segments: list[Segment]) -> list[list[Segment]]:
     return rides
 
 
-def _quote_ride(ride: list[Segment], catalog: FareCatalog) -> FareComponent:
+def _quote_ride(
+    ride: list[Segment], catalog: FareCatalog, departure_at: datetime | None
+) -> FareComponent:
     first = ride[0]
     product_id = first.fare_product_id or f"legacy:{first.route_id}"
     rule = catalog.get(product_id)
@@ -157,6 +177,25 @@ def _quote_ride(ride: list[Segment], catalog: FareCatalog) -> FareComponent:
         distance = sum(_segment_distance_km(segment) for segment in ride)
         extra_bands = max(0, ceil((distance - rule.base_distance_km) / rule.band_distance_km))
         fare = rule.base_amount + extra_bands * rule.band_amount
+        return _component(first, rule, FareStatus.ESTIMATED, fare, fare, fare)
+    if isinstance(rule, TimeDistanceCapFareRule):
+        distance = sum(_segment_distance_km(segment) for segment in ride)
+        uncapped = (
+            rule.base_amount + max(0, ceil(distance - rule.base_distance_km)) * rule.per_km_amount
+        )
+        offpeak_fare = min(uncapped, rule.offpeak_cap)
+        peak_fare = min(uncapped, rule.peak_cap)
+        if departure_at is None and offpeak_fare != peak_fare:
+            return _component(
+                first,
+                rule,
+                FareStatus.RANGE,
+                offpeak_fare,
+                offpeak_fare,
+                peak_fare,
+            )
+        cap = rule.peak_cap if _is_weekday_peak(departure_at) else rule.offpeak_cap
+        fare = min(uncapped, cap)
         return _component(first, rule, FareStatus.ESTIMATED, fare, fare, fare)
     return _component(
         first,
@@ -214,3 +253,16 @@ def _combined_status(statuses: set[FareStatus]) -> FareStatus:
         if status in statuses:
             return status
     return FareStatus.EXACT
+
+
+def _is_weekday_peak(value: datetime | None) -> bool:
+    if value is None:
+        return False
+    if value.tzinfo is None:
+        local = value.replace(tzinfo=ZoneInfo("Asia/Jakarta"))
+    else:
+        local = value.astimezone(ZoneInfo("Asia/Jakarta"))
+    if local.weekday() >= 5:
+        return False
+    minute = local.hour * 60 + local.minute
+    return 6 * 60 <= minute <= 8 * 60 + 59 or 16 * 60 <= minute <= 19 * 60 + 59

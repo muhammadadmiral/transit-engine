@@ -26,6 +26,8 @@ COORDINATE_SOURCE_URL = (
 )
 MRT_FARE_SOURCE_URL = "https://jdih.jakarta.go.id/dokumenPeraturanDirectory/0031/201925034.pdf"
 LRT_FARE_SOURCE_URL = "https://www.lrtjakarta.co.id/faq.html?action=FAQ.list&page=3"
+LRT_JABODEBEK_STATION_SOURCE_URL = "https://lrtjabodebek.kai.id/stations"
+LRT_JABODEBEK_COORDINATE_SOURCE_URL = "https://www.openstreetmap.org/copyright"
 
 MRT_STATIONS = (
     ("lebak-bulus", "Lebak Bulus BSI", -6.28950821, 106.77484959),
@@ -50,6 +52,39 @@ LRT_JAKARTA_STATIONS = (
     ("pulomas", "Pulomas", -6.17716409, 106.89345618),
     ("equestrian", "Equestrian", -6.18351300, 106.89130374),
     ("velodrome", "Velodrome", -6.19229767, 106.89122420),
+)
+
+LRT_JABODEBEK_COMMON_STATIONS = (
+    ("dukuh-atas", "Dukuh Atas BNI", -6.2048280, 106.8255301),
+    ("setiabudi", "Setiabudi", -6.2093184, 106.8302209),
+    ("rasuna-said", "Rasuna Said", -6.2216089, 106.8322373),
+    ("kuningan", "Kuningan", -6.2287727, 106.8332031),
+    ("pancoran", "Pancoran bank bjb", -6.2421415, 106.8385146),
+    ("cikoko", "Cikoko", -6.2434846, 106.8570718),
+    ("ciliwung", "Ciliwung", -6.2434461, 106.8639705),
+    ("cawang", "Cawang", -6.2459070, 106.8712296),
+)
+
+LRT_JABODEBEK_BEKASI_STATIONS = (
+    ("halim", "Halim", -6.2458656, 106.8872875),
+    ("jatibening-baru", "Jatibening Baru", -6.2577476, 106.9279199),
+    ("cikunir-1", "Cikunir 1", -6.2566001, 106.9518734),
+    ("cikunir-2", "Cikunir 2", -6.2546502, 106.9632112),
+    ("bekasi-barat", "Bekasi Barat", -6.2529489, 106.9904237),
+    ("jatimulya", "Jatimulya", -6.2641077, 107.0216701),
+)
+
+LRT_JABODEBEK_CIBUBUR_STATIONS = (
+    ("taman-mini", "Taman Mini", -6.2929088, 106.8805584),
+    ("kampung-rambutan", "Kampung Rambutan", -6.3095494, 106.8843804),
+    ("ciracas", "Ciracas", -6.3237693, 106.8866433),
+    ("harjamukti", "Harjamukti", -6.3738926, 106.8956698),
+)
+
+LRT_JABODEBEK_STATIONS = (
+    *LRT_JABODEBEK_COMMON_STATIONS,
+    *LRT_JABODEBEK_BEKASI_STATIONS,
+    *LRT_JABODEBEK_CIBUBUR_STATIONS,
 )
 
 _MRT_FARE_ROWS = (
@@ -79,6 +114,7 @@ def build_rail_dataset() -> TransitDataset:
     stops = [
         *_stops("mrt", MRT_STATIONS, TransportMode.MRT),
         *_stops("lrt-jakarta", LRT_JAKARTA_STATIONS, TransportMode.LRT),
+        *_stops("lrt-jabodebek", LRT_JABODEBEK_STATIONS, TransportMode.LRT),
     ]
     segments = [
         *_line_segments(
@@ -102,6 +138,36 @@ def build_rail_dataset() -> TransitDataset:
             duration_min=2.8,
             fare=5000,
             fare_product_id="lrt-jakarta:regular",
+        ),
+        *_line_segments(
+            namespace="lrt-jabodebek",
+            stations=(
+                *LRT_JABODEBEK_COMMON_STATIONS,
+                *LRT_JABODEBEK_BEKASI_STATIONS,
+            ),
+            route_id="lrt-jabodebek:bekasi",
+            mode=TransportMode.LRT,
+            service_name="LRT Jabodebek - Bekasi Line",
+            color="ED1B2F",
+            duration_min=5,
+            fare=5000,
+            fare_product_id="lrt-jabodebek:regular",
+            data_confidence=DataConfidence.COMMUNITY,
+        ),
+        *_line_segments(
+            namespace="lrt-jabodebek",
+            stations=(
+                *LRT_JABODEBEK_COMMON_STATIONS,
+                *LRT_JABODEBEK_CIBUBUR_STATIONS,
+            ),
+            route_id="lrt-jabodebek:cibubur",
+            mode=TransportMode.LRT,
+            service_name="LRT Jabodebek - Cibubur Line",
+            color="204B9B",
+            duration_min=5,
+            fare=5000,
+            fare_product_id="lrt-jabodebek:regular",
+            data_confidence=DataConfidence.COMMUNITY,
         ),
     ]
     return TransitDataset(stops=stops, segments=segments)
@@ -129,6 +195,7 @@ def _line_segments(
     duration_min: float,
     fare: int,
     fare_product_id: str,
+    data_confidence: DataConfidence = DataConfidence.OFFICIAL,
 ) -> list[Segment]:
     segments = []
     for first, second in pairwise(stations):
@@ -143,6 +210,7 @@ def _line_segments(
                     duration_min,
                     fare,
                     fare_product_id,
+                    data_confidence,
                     first,
                     second,
                 ),
@@ -155,6 +223,7 @@ def _line_segments(
                     duration_min,
                     fare,
                     fare_product_id,
+                    data_confidence,
                     second,
                     first,
                 ),
@@ -172,13 +241,14 @@ def _segment(
     duration_min: float,
     fare: int,
     fare_product_id: str,
+    data_confidence: DataConfidence,
     from_station: tuple[str, str, float, float],
     to_station: tuple[str, str, float, float],
 ) -> Segment:
     from_id, _, from_lat, from_lng = from_station
     to_id, _, to_lat, to_lng = to_station
     return Segment(
-        id=f"{namespace}:{from_id}:{to_id}",
+        id=f"{route_id}:{from_id}:{to_id}",
         route_id=route_id,
         from_stop_id=f"{namespace}:{from_id}",
         to_stop_id=f"{namespace}:{to_id}",
@@ -188,7 +258,7 @@ def _segment(
         avg_duration_min=duration_min,
         fare=fare,
         fare_product_id=fare_product_id,
-        data_confidence=DataConfidence.OFFICIAL,
+        data_confidence=data_confidence,
         last_verified_at=VERIFIED_AT,
         color=color,
         coordinates=[(from_lng, from_lat), (to_lng, to_lat)],

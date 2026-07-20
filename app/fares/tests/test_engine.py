@@ -1,10 +1,11 @@
-from datetime import date
+from datetime import date, datetime
 
 from app.fares.engine import (
     EstimatedRangeFareRule,
     FareCatalog,
     FlatFareRule,
     OdMatrixFareRule,
+    TimeDistanceCapFareRule,
     quote_journey,
 )
 from app.models.schema import (
@@ -83,3 +84,42 @@ def test_estimated_range_stays_visible_to_api_consumers() -> None:
 
     assert quote.status is FareStatus.RANGE
     assert (quote.min_amount, quote.estimated_amount, quote.max_amount) == (5000, 6000, 8000)
+
+
+def test_time_dependent_fare_is_range_without_departure_and_peak_with_time() -> None:
+    catalog = FareCatalog(
+        [
+            TimeDistanceCapFareRule(
+                "lrt-jabodebek",
+                base_amount=5000,
+                base_distance_km=1,
+                per_km_amount=700,
+                offpeak_cap=10000,
+                peak_cap=20000,
+                source_url="https://example.com/lrt",
+            )
+        ]
+    )
+    ride = [
+        segment(
+            "one",
+            "lrt",
+            "a",
+            "b",
+            product_id="lrt-jabodebek",
+            fare=5000,
+        ).model_copy(update={"coordinates": [(106.8, -6.2), (106.9, -6.2)]})
+    ]
+
+    without_time = quote_journey(ride, catalog=catalog)
+    weekday_peak = quote_journey(
+        ride,
+        catalog=catalog,
+        departure_at=datetime(2026, 7, 20, 7, 0),
+    )
+
+    assert without_time.status is FareStatus.RANGE
+    assert without_time.min_amount == 10000
+    assert without_time.max_amount > without_time.min_amount
+    assert weekday_peak.status is FareStatus.ESTIMATED
+    assert weekday_peak.estimated_amount == without_time.max_amount

@@ -53,7 +53,7 @@ class FareModel(StrEnum):
     FLAT = "flat"
     OD_MATRIX = "od_matrix"
     DISTANCE_BANDS = "distance_bands"
-    TIME_DEPENDENT_OD = "time_dependent_od"
+    TIME_DISTANCE_CAP = "time_distance_cap"
     ESTIMATED_RANGE = "estimated_range"
 
 

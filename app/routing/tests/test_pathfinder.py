@@ -21,6 +21,7 @@ def segment(
     duration: float,
     fare: int,
     route_id: str | None = None,
+    fare_product_id: str | None = None,
 ) -> Segment:
     return Segment(
         id=segment_id,
@@ -32,6 +33,7 @@ def segment(
         service_name=mode.value.upper(),
         avg_duration_min=duration,
         fare=fare,
+        fare_product_id=fare_product_id,
         data_confidence=DataConfidence.OFFICIAL,
         last_verified_at=date(2026, 7, 19),
         color="00609C",
@@ -81,6 +83,38 @@ def test_counts_a_transfer_between_two_routes_of_the_same_mode() -> None:
 
     with pytest.raises(RouteNotFoundError):
         find_route(graph, "origin", "destination", SearchCriteria.FASTEST, max_transfers=0)
+
+
+def test_transfer_within_one_fare_product_is_not_charged_twice() -> None:
+    graph = build_graph(
+        [
+            segment(
+                "one",
+                "origin",
+                "mid",
+                TransportMode.TRANSJAKARTA,
+                4,
+                3500,
+                "tj-1",
+                "transjakarta:regular",
+            ),
+            segment(
+                "two",
+                "mid",
+                "destination",
+                TransportMode.TRANSJAKARTA,
+                4,
+                3500,
+                "tj-2",
+                "transjakarta:regular",
+            ),
+        ]
+    )
+
+    route = find_route(graph, "origin", "destination", SearchCriteria.CHEAPEST, max_transfers=1)
+
+    assert route.total_fare == 3500
+    assert route.transfer_count == 1
 
 
 def test_respects_max_transfers() -> None:

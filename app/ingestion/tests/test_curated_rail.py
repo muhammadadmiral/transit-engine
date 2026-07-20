@@ -7,8 +7,8 @@ from app.models.schema import FareStatus, TransportMode
 def test_builds_only_currently_operational_mrt_and_lrt_jakarta_stations() -> None:
     dataset = build_rail_dataset()
 
-    assert len(dataset.stops) == 19
-    assert len(dataset.segments) == 34
+    assert len(dataset.stops) == 37
+    assert len(dataset.segments) == 82
     assert {stop.modes[0] for stop in dataset.stops} == {
         TransportMode.MRT,
         TransportMode.LRT,

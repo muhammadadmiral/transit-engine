@@ -56,8 +56,10 @@ def find_route(
         segment = data.get("segment")
         if segment is None:
             return 0.0
-        if criteria is SearchCriteria.CHEAPEST and source[1] == segment.route_id:
-            return 0.0
+        if criteria is SearchCriteria.CHEAPEST:
+            previous_product = state_graph.nodes[source].get("fare_product_id")
+            if previous_product is not None and previous_product == segment.fare_product_id:
+                return 0.0
         return weight(segment)  # type: ignore[arg-type]
 
     best_path: list[tuple[str, str | None, int]] | None = None
@@ -99,7 +101,7 @@ def _build_state_graph(
 ) -> nx.DiGraph:
     state_graph = nx.DiGraph()
     source = (origin_stop_id, None, 0)
-    state_graph.add_node(source)
+    state_graph.add_node(source, fare_product_id=None)
     pending = deque([source])
     visited = {source}
 
@@ -114,6 +116,7 @@ def _build_state_graph(
             if next_transfers > max_transfers:
                 continue
             to_state = (segment.to_stop_id, segment.route_id, next_transfers)
+            state_graph.add_node(to_state, fare_product_id=segment.fare_product_id)
             state_graph.add_edge(from_state, to_state, segment=segment)
             if to_state not in visited:
                 visited.add(to_state)
