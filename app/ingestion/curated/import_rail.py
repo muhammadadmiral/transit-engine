@@ -20,7 +20,7 @@ async def import_rail() -> tuple[int, int]:
         segments=[*rapid_transit.segments, *commuter.segments, *bikun.segments],
     )
     async with SessionLocal() as session:
-        await replace_dataset(session, dataset, {"mrt", "lrt", "krl", "angkot"})
+        await replace_dataset(session, dataset, {"mrt", "lrt", "krl", "bikun"})
         await replace_transfer_segments(session, await build_transfer_segments(session))
         await session.commit()
     return len(dataset.stops), len(dataset.segments)

@@ -49,5 +49,10 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             amount=0,
             source_url="https://ui.ac.id",
         ),
+        FlatFareRule(
+            product_id="angkot:regular",
+            amount=5000,
+            source_url="https://dishub.jabarprov.go.id",
+        ),
     ]
 )

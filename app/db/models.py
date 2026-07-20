@@ -25,7 +25,7 @@ class SegmentRecord(Base):
     to_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
     mode: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     service_category: Mapped[str] = mapped_column(String(32), nullable=False)
-    service_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    service_name: Mapped[str] = mapped_column(String(255), nullable=False)
     avg_duration_min: Mapped[float] = mapped_column(Float, nullable=False)
     fare: Mapped[int] = mapped_column(Integer, nullable=False)
     fare_product_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)

@@ -48,7 +48,7 @@ def build_bikun_dataset() -> TransitDataset:
             name=row.name,
             lat=row.lat,
             lng=row.lng,
-            modes=[TransportMode.ANGKOT],
+            modes=[TransportMode.BIKUN],
         )
 
     segments: list[Segment] = []
@@ -63,8 +63,8 @@ def build_bikun_dataset() -> TransitDataset:
                 route_id="bikun:red",
                 from_stop_id=f"bikun:{from_id}",
                 to_stop_id=f"bikun:{to_id}",
-                mode=TransportMode.ANGKOT,
-                service_category=ServiceCategory.SHUTTLE,
+                mode=TransportMode.BIKUN,
+                service_category=ServiceCategory.BIKUN,
                 service_name="Bikun Rute Merah",
                 avg_duration_min=3.0,
                 fare=0,
@@ -89,8 +89,8 @@ def build_bikun_dataset() -> TransitDataset:
                 route_id="bikun:blue",
                 from_stop_id=f"bikun:{from_id}",
                 to_stop_id=f"bikun:{to_id}",
-                mode=TransportMode.ANGKOT,
-                service_category=ServiceCategory.SHUTTLE,
+                mode=TransportMode.BIKUN,
+                service_category=ServiceCategory.BIKUN,
                 service_name="Bikun Rute Biru",
                 avg_duration_min=3.0,
                 fare=0,

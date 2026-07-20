@@ -20,6 +20,7 @@ class TransportMode(StrEnum):
     LRT = "lrt"
     TRANSJAKARTA = "transjakarta"
     ANGKOT = "angkot"
+    BIKUN = "bikun"
     WALK = "walk"
 
 
@@ -37,6 +38,7 @@ class ServiceCategory(StrEnum):
     SHUTTLE = "shuttle"
     TOURIST = "tourist"
     TRANSFER = "transfer"
+    BIKUN = "bikun"
 
 
 class SearchCriteria(StrEnum):

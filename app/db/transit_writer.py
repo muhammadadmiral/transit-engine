@@ -33,7 +33,16 @@ async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes:
         for stop in dataset.stops
     ]
     for batch in _batches(stop_rows):
-        await session.execute(insert(StopRecord).values(batch))
+        stmt = insert(StopRecord).values(batch)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "name": stmt.excluded.name,
+                "mode": stmt.excluded.mode,
+                "location": stmt.excluded.location,
+            }
+        )
+        await session.execute(stmt)
 
     await insert_segments(session, dataset.segments)
 
@@ -67,7 +76,26 @@ async def insert_segments(session: AsyncSession, segments: list[Segment]) -> Non
         for segment in segments
     ]
     for batch in _batches(segment_rows):
-        await session.execute(insert(SegmentRecord).values(batch))
+        stmt = insert(SegmentRecord).values(batch)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "route_id": stmt.excluded.route_id,
+                "from_stop_id": stmt.excluded.from_stop_id,
+                "to_stop_id": stmt.excluded.to_stop_id,
+                "mode": stmt.excluded.mode,
+                "service_category": stmt.excluded.service_category,
+                "service_name": stmt.excluded.service_name,
+                "avg_duration_min": stmt.excluded.avg_duration_min,
+                "fare": stmt.excluded.fare,
+                "fare_product_id": stmt.excluded.fare_product_id,
+                "data_confidence": stmt.excluded.data_confidence,
+                "last_verified_at": stmt.excluded.last_verified_at,
+                "color": stmt.excluded.color,
+                "geometry": stmt.excluded.geometry,
+            }
+        )
+        await session.execute(stmt)
 
 
 def _batches(rows: list[dict[str, object]]) -> list[list[dict[str, object]]]:
