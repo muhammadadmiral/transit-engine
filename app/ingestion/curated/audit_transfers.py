@@ -14,9 +14,7 @@ async def main() -> None:
     args = parser.parse_args()
     if args.summary:
         async with SessionLocal() as session:
-            count = await session.scalar(
-                text("SELECT count(*) FROM segments WHERE mode = 'walk'")
-            )
+            count = await session.scalar(text("SELECT count(*) FROM segments WHERE mode = 'walk'"))
             pairs = await session.scalar(
                 text("SELECT count(DISTINCT route_id) FROM segments WHERE mode = 'walk'")
             )

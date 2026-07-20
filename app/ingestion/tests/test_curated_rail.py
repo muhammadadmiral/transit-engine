@@ -16,6 +16,13 @@ def test_builds_only_currently_operational_mrt_and_lrt_jakarta_stations() -> Non
     }
     assert not any("manggarai" in stop.id for stop in dataset.stops)
     assert all(len(segment.coordinates) > 2 for segment in dataset.segments)
+    stops = {stop.id: stop for stop in dataset.stops}
+    assert all(
+        segment.coordinates[0] == (stops[segment.from_stop_id].lng, stops[segment.from_stop_id].lat)
+        and segment.coordinates[-1]
+        == (stops[segment.to_stop_id].lng, stops[segment.to_stop_id].lat)
+        for segment in dataset.segments
+    )
 
 
 def test_quotes_mrt_fare_from_official_od_matrix() -> None:
@@ -53,6 +60,13 @@ def test_builds_complete_krl_jabodetabek_topology() -> None:
     }
     assert {"krl:jatake", "krl:nambo", "krl:rangkasbitung"} <= {stop.id for stop in dataset.stops}
     assert all(len(segment.coordinates) > 2 for segment in dataset.segments)
+    stops = {stop.id: stop for stop in dataset.stops}
+    assert all(
+        segment.coordinates[0] == (stops[segment.from_stop_id].lng, stops[segment.from_stop_id].lat)
+        and segment.coordinates[-1]
+        == (stops[segment.to_stop_id].lng, stops[segment.to_stop_id].lat)
+        for segment in dataset.segments
+    )
 
 
 def test_quotes_krl_distance_band_as_estimate() -> None:

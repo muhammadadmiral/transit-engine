@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.config import get_settings
 from app.routers import data_refresh, health, network, route_search, stops
@@ -13,6 +14,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(health.router)
 app.include_router(route_search.router)
 app.include_router(data_refresh.router)
