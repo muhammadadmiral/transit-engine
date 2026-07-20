@@ -3,7 +3,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)](./LICENSE)
 
-Backend domain-logic service untuk **[TransHub Jabodetabek](https://github.com/username-lu/transhub-web)** — graph routing engine multi-kriteria di atas jaringan transit Jabodetabek (KRL, MRT, LRT, TransJakarta, angkot), plus pipeline data ingestion dari GTFS resmi dan riset manual.
+Backend domain-logic service untuk **[TransHub Jabodetabek](https://github.com/muhammadadmiral/transhub-web)** — graph routing engine multi-kriteria di atas jaringan transit Jabodetabek (KRL, MRT, LRT, TransJakarta, angkot), plus pipeline data ingestion dari GTFS resmi dan riset manual.
 
 Repo ini **satu-satunya pemilik akses database** di proyek TransHub — frontend ([`transhub-web`](https://github.com/muhammadadmiral/transhub-web)) berkomunikasi dengan repo ini murni lewat REST API.
 
@@ -42,7 +42,7 @@ Repo ini **satu-satunya pemilik akses database** di proyek TransHub — frontend
 Butuh Docker & Docker Compose.
 
 ```bash
-git clone https://github.com/username-lu/transit-engine.git
+git clone https://github.com/muhammadadmiral/transit-engine.git
 cd transit-engine
 cp .env.example .env   # isi credential lokal
 docker compose up

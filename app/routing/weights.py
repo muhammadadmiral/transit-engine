@@ -7,4 +7,3 @@ def segment_weight(criteria: SearchCriteria) -> Callable[[Segment], float]:
     if criteria is SearchCriteria.FASTEST:
         return lambda segment: segment.avg_duration_min
     return lambda segment: float(segment.fare)
-

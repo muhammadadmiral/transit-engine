@@ -55,7 +55,7 @@ To repeat an import from an already downloaded archive:
 uv run python -m app.ingestion.gtfs.import_transjakarta --feed /path/to/file_gtfs.zip
 ```
 
-The source defaults to the official `https://gtfs.transjakarta.co.id/files/file_gtfs.zip` URL. The command is idempotent for rows still in the feed: it upserts stops and directed segments by their stable IDs.
+The source defaults to the official `https://gtfs.transjakarta.co.id/files/file_gtfs.zip` URL. The command atomically replaces TransJakarta rows, so removed or changed feed records do not leave stale routing data behind.
 
 After deploying, the same refresh can be triggered remotely without exposing database credentials:
 

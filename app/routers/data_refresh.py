@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import get_settings
 from app.ingestion.gtfs.import_transjakarta import import_url
 from app.models.schema import DataRefreshResponse
+from app.routing.graph_cache import invalidate_graph_cache
 
 router = APIRouter(prefix="/data-refresh", tags=["data-refresh"])
 
@@ -32,6 +33,7 @@ async def refresh_transjakarta(
 
     try:
         stops_imported, segments_imported = await import_url(settings.transjakarta_gtfs_url)
+        invalidate_graph_cache()
     except (OSError, URLError, SQLAlchemyError) as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

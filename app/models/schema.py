@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -27,9 +27,39 @@ class DataConfidence(StrEnum):
     COMMUNITY = "community"
 
 
+class ServiceCategory(StrEnum):
+    MAIN = "main"
+    FEEDER = "feeder"
+    MICROTRANS = "microtrans"
+    REGIONAL = "regional"
+    PREMIUM = "premium"
+    SHUTTLE = "shuttle"
+    TOURIST = "tourist"
+
+
 class SearchCriteria(StrEnum):
     FASTEST = "fastest"
     CHEAPEST = "cheapest"
+
+
+class FareStatus(StrEnum):
+    EXACT = "exact"
+    ESTIMATED = "estimated"
+    RANGE = "range"
+    UNKNOWN = "unknown"
+
+
+class FareModel(StrEnum):
+    FLAT = "flat"
+    OD_MATRIX = "od_matrix"
+    DISTANCE_BANDS = "distance_bands"
+    TIME_DISTANCE_CAP = "time_distance_cap"
+    ESTIMATED_RANGE = "estimated_range"
+
+
+class PaymentProfile(StrEnum):
+    STANDARD = "standard"
+    JAKLINGKO_INTEGRATED = "jaklingko_integrated"
 
 
 class Stop(SchemaModel):
@@ -46,8 +76,11 @@ class Segment(SchemaModel):
     from_stop_id: str
     to_stop_id: str
     mode: TransportMode
+    service_category: ServiceCategory
+    service_name: str
     avg_duration_min: Annotated[float, Field(gt=0)]
     fare: Annotated[int, Field(ge=0)]
+    fare_product_id: str | None = None
     data_confidence: DataConfidence
     last_verified_at: date
     color: str = Field(pattern=r"^[0-9A-Fa-f]{6}$")
@@ -66,6 +99,8 @@ class RouteSearchRequest(SchemaModel):
     origin_stop_id: str
     destination_stop_id: str
     max_transfers: Annotated[int, Field(ge=0, le=5)] = 3
+    departure_at: datetime | None = None
+    payment_profile: PaymentProfile = PaymentProfile.STANDARD
 
 
 class GeoJsonFeature(SchemaModel):
@@ -79,10 +114,33 @@ class FeatureCollection(SchemaModel):
     features: list[GeoJsonFeature]
 
 
+class FareComponent(SchemaModel):
+    fare_product_id: str
+    service_name: str
+    model: FareModel
+    status: FareStatus
+    estimated_amount: Annotated[int, Field(ge=0)]
+    min_amount: Annotated[int, Field(ge=0)]
+    max_amount: Annotated[int, Field(ge=0)]
+    source_url: str | None = None
+
+
+class FareQuote(SchemaModel):
+    currency: Literal["IDR"] = "IDR"
+    status: FareStatus
+    estimated_amount: Annotated[int, Field(ge=0)]
+    min_amount: Annotated[int, Field(ge=0)]
+    max_amount: Annotated[int, Field(ge=0)]
+    payment_profile: PaymentProfile
+    components: list[FareComponent]
+    assumptions: list[str] = Field(default_factory=list)
+
+
 class RouteOption(SchemaModel):
     criteria: SearchCriteria
     total_duration_min: float
     total_fare: int
+    fare_quote: FareQuote
     transfer_count: int
     segments: list[Segment]
     geojson: FeatureCollection

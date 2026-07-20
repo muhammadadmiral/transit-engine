@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,7 +13,9 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check(session: AsyncSession = Depends(get_session)) -> HealthResponse:
+async def health_check(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HealthResponse:
     try:
         await session.execute(text("SELECT 1"))
     except SQLAlchemyError as error:
