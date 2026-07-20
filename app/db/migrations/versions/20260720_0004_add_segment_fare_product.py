@@ -26,7 +26,7 @@ def upgrade() -> None:
         "WHERE mode = 'transjakarta'"
     )
     op.execute(
-        "UPDATE segments SET fare_product_id = 'legacy:' || route_id "
+        "UPDATE segments SET fare_product_id = 'legacy:' || mode "
         "WHERE fare_product_id IS NULL"
     )
     op.alter_column("segments", "fare_product_id", nullable=False)
