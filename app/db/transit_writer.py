@@ -13,14 +13,19 @@ WRITE_BATCH_SIZE = 500
 
 async def replace_transjakarta_dataset(session: AsyncSession, dataset: TransitDataset) -> None:
     """Atomically replace official TransJakarta stops and directed segments."""
-    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "transjakarta"))
-    await session.execute(delete(StopRecord).where(StopRecord.mode == "transjakarta"))
+    await replace_dataset(session, dataset, {"transjakarta"})
+
+
+async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes: set[str]) -> None:
+    """Atomically replace a validated dataset for one or more isolated modes."""
+    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode.in_(modes)))
+    await session.execute(delete(StopRecord).where(StopRecord.mode.in_(modes)))
 
     stop_rows = [
         {
             "id": stop.id,
             "name": stop.name,
-            "mode": "transjakarta",
+            "mode": stop.modes[0].value,
             "location": WKTElement(f"POINT({stop.lng} {stop.lat})", srid=4326),
         }
         for stop in dataset.stops
@@ -39,6 +44,7 @@ async def replace_transjakarta_dataset(session: AsyncSession, dataset: TransitDa
             "service_name": segment.service_name,
             "avg_duration_min": segment.avg_duration_min,
             "fare": segment.fare,
+            "fare_product_id": segment.fare_product_id,
             "data_confidence": segment.data_confidence.value,
             "last_verified_at": segment.last_verified_at,
             "color": segment.color,

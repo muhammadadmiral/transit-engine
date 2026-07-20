@@ -33,6 +33,8 @@ async def route_search(
                 request.destination_stop_id,
                 criteria,
                 request.max_transfers,
+                request.departure_at,
+                request.payment_profile,
             )
             for criteria in (SearchCriteria.FASTEST, SearchCriteria.CHEAPEST)
         ]

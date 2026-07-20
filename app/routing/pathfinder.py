@@ -1,9 +1,12 @@
 from collections import deque
+from datetime import datetime
 from itertools import pairwise
 
 import networkx as nx
 
-from app.models.schema import RouteOption, SearchCriteria, Segment
+from app.fares.catalog import DEFAULT_FARE_CATALOG
+from app.fares.engine import FareCatalog, quote_journey
+from app.models.schema import PaymentProfile, RouteOption, SearchCriteria, Segment
 from app.routing.geojson_builder import build_feature_collection
 from app.routing.weights import segment_weight
 
@@ -18,12 +21,22 @@ def find_route(
     destination_stop_id: str,
     criteria: SearchCriteria,
     max_transfers: int,
+    departure_at: datetime | None = None,
+    payment_profile: PaymentProfile = PaymentProfile.STANDARD,
+    fare_catalog: FareCatalog = DEFAULT_FARE_CATALOG,
 ) -> RouteOption:
     if origin_stop_id == destination_stop_id:
+        fare_quote = quote_journey(
+            [],
+            catalog=fare_catalog,
+            departure_at=departure_at,
+            payment_profile=payment_profile,
+        )
         return RouteOption(
             criteria=criteria,
             total_duration_min=0,
             total_fare=0,
+            fare_quote=fare_quote,
             transfer_count=0,
             segments=[],
             geojson=build_feature_collection([]),
@@ -64,10 +77,17 @@ def find_route(
         raise RouteNotFoundError("No route found within max_transfers")
 
     segments = _segments_from_state_path(state_graph, best_path)
+    fare_quote = quote_journey(
+        segments,
+        catalog=fare_catalog,
+        departure_at=departure_at,
+        payment_profile=payment_profile,
+    )
     return RouteOption(
         criteria=criteria,
         total_duration_min=sum(segment.avg_duration_min for segment in segments),
-        total_fare=_total_fare(segments),
+        total_fare=fare_quote.estimated_amount,
+        fare_quote=fare_quote,
         transfer_count=best_path[-1][2],
         segments=segments,
         geojson=build_feature_collection(segments),
@@ -105,13 +125,3 @@ def _segments_from_state_path(
     graph: nx.DiGraph, states: list[tuple[str, str | None, int]]
 ) -> list[Segment]:
     return [graph[source][target]["segment"] for source, target in pairwise(states)]
-
-
-def _total_fare(segments: list[Segment]) -> int:
-    total = 0
-    previous_route_id: str | None = None
-    for segment in segments:
-        if segment.route_id != previous_route_id:
-            total += segment.fare
-            previous_route_id = segment.route_id
-    return total

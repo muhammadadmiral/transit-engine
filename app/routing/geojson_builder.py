@@ -15,6 +15,7 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
                 "toStopId": segment.to_stop_id,
                 "avgDurationMin": segment.avg_duration_min,
                 "fare": segment.fare,
+                "fareProductId": segment.fare_product_id,
                 "dataConfidence": segment.data_confidence.value,
                 "lastVerifiedAt": segment.last_verified_at.isoformat(),
             },

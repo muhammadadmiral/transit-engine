@@ -158,6 +158,7 @@ def _build_segment(
         service_name=service_name,
         avg_duration_min=avg_duration_min,
         fare=fare,
+        fare_product_id="transjakarta:regular",
         data_confidence=DataConfidence.OFFICIAL,
         last_verified_at=verified_at,
         color=color,

@@ -28,6 +28,7 @@ class SegmentRecord(Base):
     service_name: Mapped[str] = mapped_column(String(64), nullable=False)
     avg_duration_min: Mapped[float] = mapped_column(Float, nullable=False)
     fare: Mapped[int] = mapped_column(Integer, nullable=False)
+    fare_product_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     data_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
     last_verified_at: Mapped[date] = mapped_column(Date, nullable=False)
     color: Mapped[str] = mapped_column(String(6), nullable=False)
