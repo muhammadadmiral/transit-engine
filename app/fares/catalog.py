@@ -44,5 +44,15 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             band_distance_km=10,
             source_url=KRL_FARE_SOURCE_URL,
         ),
+        FlatFareRule(
+            product_id="bikun:regular",
+            amount=0,
+            source_url="https://ui.ac.id",
+        ),
+        FlatFareRule(
+            product_id="angkot:regular",
+            amount=5000,
+            source_url="https://dishub.jabarprov.go.id",
+        ),
     ]
 )
