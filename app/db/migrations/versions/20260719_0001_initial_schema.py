@@ -5,10 +5,9 @@ Revises:
 Create Date: 2026-07-19
 """
 
+import sqlalchemy as sa
 from alembic import op
 from geoalchemy2 import Geometry
-import sqlalchemy as sa
-
 
 revision = "20260719_0001"
 down_revision = None

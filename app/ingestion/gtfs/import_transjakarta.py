@@ -8,14 +8,14 @@ from urllib.request import urlretrieve
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-from app.db.transit_writer import upsert_transjakarta_dataset
+from app.db.transit_writer import replace_transjakarta_dataset
 from app.ingestion.gtfs.transjakarta import read_feed
 
 
 async def import_feed(feed_path: Path) -> tuple[int, int]:
     dataset = await asyncio.to_thread(read_feed, feed_path)
     async with SessionLocal() as session:
-        await upsert_transjakarta_dataset(session, dataset)
+        await replace_transjakarta_dataset(session, dataset)
         await session.commit()
     return len(dataset.stops), len(dataset.segments)
 

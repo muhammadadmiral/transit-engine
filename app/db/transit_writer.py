@@ -1,15 +1,21 @@
 """Persistence operations for normalized transit datasets."""
 
 from geoalchemy2.elements import WKTElement
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import SegmentRecord, StopRecord
 from app.ingestion.gtfs.transjakarta import TransitDataset
 
+WRITE_BATCH_SIZE = 500
 
-async def upsert_transjakarta_dataset(session: AsyncSession, dataset: TransitDataset) -> None:
-    """Upsert the latest official TransJakarta stops and directed segments."""
+
+async def replace_transjakarta_dataset(session: AsyncSession, dataset: TransitDataset) -> None:
+    """Atomically replace official TransJakarta stops and directed segments."""
+    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "transjakarta"))
+    await session.execute(delete(StopRecord).where(StopRecord.mode == "transjakarta"))
+
     stop_rows = [
         {
             "id": stop.id,
@@ -19,18 +25,8 @@ async def upsert_transjakarta_dataset(session: AsyncSession, dataset: TransitDat
         }
         for stop in dataset.stops
     ]
-    if stop_rows:
-        statement = insert(StopRecord).values(stop_rows)
-        await session.execute(
-            statement.on_conflict_do_update(
-                index_elements=[StopRecord.id],
-                set_={
-                    "name": statement.excluded.name,
-                    "mode": statement.excluded.mode,
-                    "location": statement.excluded.location,
-                },
-            )
-        )
+    for batch in _batches(stop_rows):
+        await session.execute(insert(StopRecord).values(batch))
 
     segment_rows = [
         {
@@ -51,19 +47,11 @@ async def upsert_transjakarta_dataset(session: AsyncSession, dataset: TransitDat
         }
         for segment in dataset.segments
     ]
-    if segment_rows:
-        statement = insert(SegmentRecord).values(segment_rows)
-        await session.execute(
-            statement.on_conflict_do_update(
-                index_elements=[SegmentRecord.id],
-                set_={
-                    "route_id": statement.excluded.route_id,
-                    "avg_duration_min": statement.excluded.avg_duration_min,
-                    "fare": statement.excluded.fare,
-                    "data_confidence": statement.excluded.data_confidence,
-                    "last_verified_at": statement.excluded.last_verified_at,
-                    "color": statement.excluded.color,
-                    "geometry": statement.excluded.geometry,
-                },
-            )
-        )
+    for batch in _batches(segment_rows):
+        await session.execute(insert(SegmentRecord).values(batch))
+
+
+def _batches(rows: list[dict[str, object]]) -> list[list[dict[str, object]]]:
+    return [
+        rows[index : index + WRITE_BATCH_SIZE] for index in range(0, len(rows), WRITE_BATCH_SIZE)
+    ]

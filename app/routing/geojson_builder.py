@@ -20,4 +20,3 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
         for segment in segments
     ]
     return FeatureCollection(features=features)
-
