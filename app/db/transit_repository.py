@@ -130,7 +130,11 @@ async def list_route_overviews(
     limit: int,
     offset: int,
 ) -> tuple[list[RouteOverview], int]:
-    conditions = [SegmentRecord.mode == mode.value] if mode is not None else []
+    conditions = (
+        [SegmentRecord.mode == mode.value]
+        if mode is not None
+        else [SegmentRecord.mode != TransportMode.WALK.value]
+    )
     statement = (
         select(
             SegmentRecord.route_id,

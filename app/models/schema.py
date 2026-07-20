@@ -20,6 +20,7 @@ class TransportMode(StrEnum):
     LRT = "lrt"
     TRANSJAKARTA = "transjakarta"
     ANGKOT = "angkot"
+    WALK = "walk"
 
 
 class DataConfidence(StrEnum):
@@ -35,6 +36,7 @@ class ServiceCategory(StrEnum):
     PREMIUM = "premium"
     SHUTTLE = "shuttle"
     TOURIST = "tourist"
+    TRANSFER = "transfer"
 
 
 class SearchCriteria(StrEnum):

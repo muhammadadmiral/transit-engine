@@ -18,6 +18,7 @@ from app.models.schema import (
     FareStatus,
     PaymentProfile,
     Segment,
+    TransportMode,
 )
 
 JAKLINGKO_ELIGIBLE_PRODUCTS = {
@@ -138,6 +139,8 @@ def _fare_rides(segments: list[Segment]) -> list[list[Segment]]:
     current_product: str | None = None
     current_fallback_route: str | None = None
     for segment in segments:
+        if segment.mode is TransportMode.WALK:
+            continue
         product = segment.fare_product_id
         same_ride = bool(current) and (
             (product is not None and product == current_product)
