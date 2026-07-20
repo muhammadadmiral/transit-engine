@@ -1,15 +1,24 @@
 from datetime import date
 
+import pytest
+
 from app.models.schema import DataConfidence, SearchCriteria, Segment, TransportMode
 from app.routing.graph import build_graph
 from app.routing.pathfinder import RouteNotFoundError, find_route
 
 
 def segment(
-    segment_id: str, from_stop_id: str, to_stop_id: str, mode: TransportMode, duration: float, fare: int
+    segment_id: str,
+    from_stop_id: str,
+    to_stop_id: str,
+    mode: TransportMode,
+    duration: float,
+    fare: int,
+    route_id: str | None = None,
 ) -> Segment:
     return Segment(
         id=segment_id,
+        route_id=route_id or mode.value,
         from_stop_id=from_stop_id,
         to_stop_id=to_stop_id,
         mode=mode,
@@ -40,6 +49,32 @@ def test_finds_fastest_and_cheapest_routes_independently() -> None:
     assert cheapest.total_fare == 3500
 
 
+def test_charges_once_and_does_not_count_a_transfer_within_one_route() -> None:
+    graph = build_graph(
+        [
+            segment("one", "origin", "mid", TransportMode.TRANSJAKARTA, 4, 3500, "tj-1"),
+            segment("two", "mid", "destination", TransportMode.TRANSJAKARTA, 4, 3500, "tj-1"),
+        ]
+    )
+
+    route = find_route(graph, "origin", "destination", SearchCriteria.CHEAPEST, max_transfers=0)
+
+    assert route.total_fare == 3500
+    assert route.transfer_count == 0
+
+
+def test_counts_a_transfer_between_two_routes_of_the_same_mode() -> None:
+    graph = build_graph(
+        [
+            segment("one", "origin", "mid", TransportMode.TRANSJAKARTA, 4, 3500, "tj-1"),
+            segment("two", "mid", "destination", TransportMode.TRANSJAKARTA, 4, 3500, "tj-2"),
+        ]
+    )
+
+    with pytest.raises(RouteNotFoundError):
+        find_route(graph, "origin", "destination", SearchCriteria.FASTEST, max_transfers=0)
+
+
 def test_respects_max_transfers() -> None:
     graph = build_graph(
         [
@@ -54,4 +89,3 @@ def test_respects_max_transfers() -> None:
         pass
     else:
         raise AssertionError("expected transfer constraint to reject the route")
-

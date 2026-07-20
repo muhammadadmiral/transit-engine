@@ -40,3 +40,28 @@ The FastAPI Cloud application itself needs only its own runtime `DATABASE_URL`; 
 FastAPI Cloud can scale to zero when idle. There is intentionally no keep-alive workflow. The service must treat its filesystem and in-memory graph/cache as ephemeral; rebuild any future cache from Supabase.
 
 For schema evolution, use gradual migrations: add database structures before code consumes them, and remove structures only after code no longer uses them.
+
+## Initial TransJakarta import
+
+After the first `dev` deployment has applied migrations, import the official feed from a machine with the development `DATABASE_URL` configured:
+
+```bash
+uv run python -m app.ingestion.gtfs.import_transjakarta
+```
+
+To repeat an import from an already downloaded archive:
+
+```bash
+uv run python -m app.ingestion.gtfs.import_transjakarta --feed /path/to/file_gtfs.zip
+```
+
+The source defaults to the official `https://gtfs.transjakarta.co.id/files/file_gtfs.zip` URL. The command is idempotent for rows still in the feed: it upserts stops and directed segments by their stable IDs.
+
+After deploying, the same refresh can be triggered remotely without exposing database credentials:
+
+```bash
+curl --fail --request POST "https://<your-dev-app>.fastapicloud.dev/data-refresh/transjakarta" \
+  --header "X-Data-Refresh-Secret: <DATA_REFRESH_SECRET>"
+```
+
+Set a non-empty, unique `DATA_REFRESH_SECRET` in FastAPI Cloud before using this endpoint.
