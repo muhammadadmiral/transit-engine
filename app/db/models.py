@@ -12,7 +12,7 @@ class StopRecord(Base):
 
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     location: Mapped[object] = mapped_column(Geometry("POINT", srid=4326), nullable=False)
 
 
@@ -23,7 +23,7 @@ class SegmentRecord(Base):
     route_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     from_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
     to_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
-    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     service_category: Mapped[str] = mapped_column(String(32), nullable=False)
     service_name: Mapped[str] = mapped_column(String(64), nullable=False)
     avg_duration_min: Mapped[float] = mapped_column(Float, nullable=False)

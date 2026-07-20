@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import SegmentRecord, StopRecord
 from app.ingestion.gtfs.transjakarta import TransitDataset
+from app.models.schema import Segment
 
 WRITE_BATCH_SIZE = 500
 
@@ -18,6 +19,7 @@ async def replace_transjakarta_dataset(session: AsyncSession, dataset: TransitDa
 
 async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes: set[str]) -> None:
     """Atomically replace a validated dataset for one or more isolated modes."""
+    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "walk"))
     await session.execute(delete(SegmentRecord).where(SegmentRecord.mode.in_(modes)))
     await session.execute(delete(StopRecord).where(StopRecord.mode.in_(modes)))
 
@@ -33,6 +35,15 @@ async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes:
     for batch in _batches(stop_rows):
         await session.execute(insert(StopRecord).values(batch))
 
+    await insert_segments(session, dataset.segments)
+
+
+async def replace_transfer_segments(session: AsyncSession, segments: list[Segment]) -> None:
+    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "walk"))
+    await insert_segments(session, segments)
+
+
+async def insert_segments(session: AsyncSession, segments: list[Segment]) -> None:
     segment_rows = [
         {
             "id": segment.id,
@@ -53,7 +64,7 @@ async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes:
                 srid=4326,
             ),
         }
-        for segment in dataset.segments
+        for segment in segments
     ]
     for batch in _batches(segment_rows):
         await session.execute(insert(SegmentRecord).values(batch))

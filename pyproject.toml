@@ -36,6 +36,7 @@ entrypoint = "app.main:app"
 
 [tool.pytest.ini_options]
 testpaths = ["app/routing/tests", "app/ingestion/tests", "tests"]
+markers = ["integration: tests that require the configured external database"]
 
 [tool.ruff]
 line-length = 100

@@ -131,3 +131,38 @@ def test_respects_max_transfers() -> None:
         pass
     else:
         raise AssertionError("expected transfer constraint to reject the route")
+
+
+def test_walking_connector_counts_one_boarding_transfer_and_has_no_fare() -> None:
+    graph = build_graph(
+        [
+            segment("mrt", "origin", "mrt-stop", TransportMode.MRT, 4, 4000, "mrt"),
+            segment(
+                "walk",
+                "mrt-stop",
+                "krl-stop",
+                TransportMode.WALK,
+                5,
+                0,
+                "transfer",
+                "free:walk",
+            ),
+            segment("krl", "krl-stop", "destination", TransportMode.KRL, 6, 3000, "krl"),
+        ]
+    )
+
+    route = find_route(graph, "origin", "destination", SearchCriteria.FASTEST, max_transfers=1)
+
+    assert [item.mode for item in route.segments] == [
+        TransportMode.MRT,
+        TransportMode.WALK,
+        TransportMode.KRL,
+    ]
+    assert route.transfer_count == 1
+    assert route.total_fare == 7000
+    assert all(
+        component.fare_product_id != "free:walk" for component in route.fare_quote.components
+    )
+
+    with pytest.raises(RouteNotFoundError):
+        find_route(graph, "origin", "destination", SearchCriteria.FASTEST, max_transfers=0)

@@ -6,7 +6,7 @@ import networkx as nx
 
 from app.fares.catalog import DEFAULT_FARE_CATALOG
 from app.fares.engine import FareCatalog, quote_journey
-from app.models.schema import PaymentProfile, RouteOption, SearchCriteria, Segment
+from app.models.schema import PaymentProfile, RouteOption, SearchCriteria, Segment, TransportMode
 from app.routing.geojson_builder import build_feature_collection
 from app.routing.weights import segment_weight
 
@@ -110,13 +110,19 @@ def _build_state_graph(
         stop_id, previous_route_id, transfers = from_state
         for _, _, edge_data in graph.out_edges(stop_id, data=True):
             segment: Segment = edge_data["segment"]
+            is_walk = segment.mode is TransportMode.WALK
+            next_route_id = previous_route_id if is_walk else segment.route_id
             next_transfers = transfers + int(
-                previous_route_id is not None and previous_route_id != segment.route_id
+                not is_walk
+                and previous_route_id is not None
+                and previous_route_id != segment.route_id
             )
             if next_transfers > max_transfers:
                 continue
-            to_state = (segment.to_stop_id, segment.route_id, next_transfers)
-            state_graph.add_node(to_state, fare_product_id=segment.fare_product_id)
+            to_state = (segment.to_stop_id, next_route_id, next_transfers)
+            previous_product = state_graph.nodes[from_state].get("fare_product_id")
+            next_product = previous_product if is_walk else segment.fare_product_id
+            state_graph.add_node(to_state, fare_product_id=next_product)
             state_graph.add_edge(from_state, to_state, segment=segment)
             if to_state not in visited:
                 visited.add(to_state)

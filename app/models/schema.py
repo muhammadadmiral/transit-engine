@@ -20,6 +20,7 @@ class TransportMode(StrEnum):
     LRT = "lrt"
     TRANSJAKARTA = "transjakarta"
     ANGKOT = "angkot"
+    WALK = "walk"
 
 
 class DataConfidence(StrEnum):
@@ -35,6 +36,7 @@ class ServiceCategory(StrEnum):
     PREMIUM = "premium"
     SHUTTLE = "shuttle"
     TOURIST = "tourist"
+    TRANSFER = "transfer"
 
 
 class SearchCriteria(StrEnum):
@@ -70,6 +72,13 @@ class Stop(SchemaModel):
     modes: list[TransportMode] = Field(min_length=1)
 
 
+class StopListResponse(SchemaModel):
+    items: list[Stop]
+    total: Annotated[int, Field(ge=0)]
+    limit: Annotated[int, Field(ge=1)]
+    offset: Annotated[int, Field(ge=0)]
+
+
 class Segment(SchemaModel):
     id: str
     route_id: str
@@ -93,6 +102,22 @@ class Route(SchemaModel):
     name: str
     color: str = Field(pattern=r"^[0-9A-Fa-f]{6}$")
     stop_ids: list[str] = Field(min_length=2)
+
+
+class RouteOverview(SchemaModel):
+    id: str
+    mode: TransportMode
+    name: str
+    color: str = Field(pattern=r"^[0-9A-Fa-f]{6}$")
+    service_category: ServiceCategory
+    segment_count: Annotated[int, Field(ge=1)]
+
+
+class RouteListResponse(SchemaModel):
+    items: list[RouteOverview]
+    total: Annotated[int, Field(ge=0)]
+    limit: Annotated[int, Field(ge=1)]
+    offset: Annotated[int, Field(ge=0)]
 
 
 class RouteSearchRequest(SchemaModel):
