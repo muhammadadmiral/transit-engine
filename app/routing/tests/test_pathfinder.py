@@ -141,6 +141,185 @@ def test_respects_max_transfers() -> None:
         raise AssertionError("expected transfer constraint to reject the route")
 
 
+def test_transfer_penalty_prefers_a_slightly_slower_direct_vehicle() -> None:
+    graph = build_graph(
+        [
+            segment("first", "origin", "mid", TransportMode.MRT, 5, 4000, "mrt-a"),
+            segment("second", "mid", "destination", TransportMode.KRL, 5, 3000, "krl-b"),
+            segment(
+                "direct",
+                "origin",
+                "destination",
+                TransportMode.TRANSJAKARTA,
+                15,
+                3500,
+                "tj-direct",
+            ),
+        ]
+    )
+
+    route = find_route(graph, "origin", "destination", SearchCriteria.FASTEST, max_transfers=1)
+
+    assert [item.id for item in route.segments] == ["direct"]
+    assert route.transfer_count == 0
+
+
+def test_coordinate_access_can_choose_a_farther_but_better_stop() -> None:
+    graph = build_graph(
+        [
+            segment("detour", "near", "destination-stop", TransportMode.TRANSJAKARTA, 40, 3500),
+            segment("direct", "rail", "destination-stop", TransportMode.KRL, 10, 3000),
+        ]
+    )
+    access = [
+        segment("walk-near", "pin", "near", TransportMode.WALK, 1, 0, "access"),
+        segment("walk-rail", "pin", "rail", TransportMode.WALK, 7, 0, "access"),
+        segment(
+            "walk-destination",
+            "destination-stop",
+            "destination-pin",
+            TransportMode.WALK,
+            2,
+            0,
+            "access",
+        ),
+    ]
+
+    route = find_route(
+        graph,
+        "pin",
+        "destination-pin",
+        SearchCriteria.FASTEST,
+        max_transfers=1,
+        additional_segments=access,
+    )
+
+    assert [item.id for item in route.segments] == [
+        "walk-rail",
+        "direct",
+        "walk-destination",
+    ]
+
+
+def test_cheapest_uses_fare_product_rule_when_raw_gtfs_fare_is_zero() -> None:
+    graph = build_graph(
+        [
+            segment(
+                "free-looking-tj",
+                "origin",
+                "destination",
+                TransportMode.TRANSJAKARTA,
+                20,
+                0,
+                "tj",
+                "transjakarta:regular",
+            ),
+            segment(
+                "krl",
+                "origin",
+                "destination",
+                TransportMode.KRL,
+                25,
+                3000,
+                "krl",
+                "krl-jabodetabek:regular",
+            ),
+        ]
+    )
+
+    route = find_route(graph, "origin", "destination", SearchCriteria.CHEAPEST, max_transfers=0)
+
+    assert [item.id for item in route.segments] == ["krl"]
+    assert route.total_fare == 3000
+
+
+def test_cheapest_penalizes_a_free_tj_detour_against_a_priced_rail_route() -> None:
+    """Regression: SMAN 38 -> Jakarta Kota — cheapest previously routed the
+    user on a multi-stop TransJakarta marathon (142 min, Rp3.500) instead of
+    walking ~1 min to KRL Universitas Pancasila (44 min, Rp4.000).
+
+    The Rp500 fare saving must not buy hours of extra riding time.
+    """
+    graph = build_graph(
+        [
+            # 1-stop KRL leg as in the real network.
+            segment(
+                "krl-leg",
+                "krl:universitas-pancasila",
+                "krl:jakarta-kota",
+                TransportMode.KRL,
+                40,
+                3000,
+                "krl-bogor",
+                "krl-jabodetabek:regular",
+            ),
+            # Free TransJakarta BRT legs that form a long detour loop.
+            *[
+                segment(
+                    f"tj-{index}",
+                    f"tj:{index}",
+                    f"tj:{index + 1}",
+                    TransportMode.TRANSJAKARTA,
+                    3,
+                    3500,
+                    "tj-detour",
+                    "transjakarta:regular",
+                )
+                for index in range(20)
+            ],
+        ]
+    )
+    # Connect the long TJ chain to both ends.
+    access = [
+        segment(
+            "walk-rail", "pin", "krl:universitas-pancasila", TransportMode.WALK, 1, 0, "access"
+        ),
+        segment("walk-tj-head", "pin", "tj:0", TransportMode.WALK, 1, 0, "access"),
+        segment(
+            "walk-destination",
+            "krl:jakarta-kota",
+            "destination-pin",
+            TransportMode.WALK,
+            2,
+            0,
+            "access",
+        ),
+        segment(
+            "walk-tj-tail",
+            "tj:20",
+            "destination-pin",
+            TransportMode.WALK,
+            8,
+            0,
+            "access",
+        ),
+    ]
+
+    fastest = find_route(
+        graph,
+        "pin",
+        "destination-pin",
+        SearchCriteria.FASTEST,
+        max_transfers=1,
+        additional_segments=access,
+    )
+    cheapest = find_route(
+        graph,
+        "pin",
+        "destination-pin",
+        SearchCriteria.CHEAPEST,
+        max_transfers=1,
+        additional_segments=access,
+    )
+
+    assert [item.id for item in fastest.segments[0:1]] == ["walk-rail"]
+    assert [item.id for item in cheapest.segments[0:1]] == ["walk-rail"]
+    # Detour costs >40 minutes more — cheapest should not take it.
+    assert cheapest.total_duration_min < 50
+    # Walk legs are free; KRL leg is the only paid segment (Rp3.000).
+    assert cheapest.total_fare == 3000
+
+
 def test_walking_connector_counts_one_boarding_transfer_and_has_no_fare() -> None:
     graph = build_graph(
         [

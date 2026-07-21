@@ -39,6 +39,7 @@ testpaths = ["app/routing/tests", "app/ingestion/tests", "tests"]
 markers = ["integration: tests that require the configured external database"]
 
 [tool.ruff]
+extend-exclude = ["scratch"]
 line-length = 100
 target-version = "py311"
 
