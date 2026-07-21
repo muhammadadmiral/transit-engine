@@ -15,5 +15,6 @@ def test_spatial_transfers_only_connect_different_modes_to_local_services() -> N
     assert _supports_spatial_transfer("angkot", "transjakarta")
     assert _supports_spatial_transfer("bikun", "krl")
     assert not _supports_spatial_transfer("angkot", "angkot")
-    assert not _supports_spatial_transfer("transjakarta", "transjakarta")
+    assert _supports_spatial_transfer("transjakarta", "transjakarta", distance_meters=80)
+    assert not _supports_spatial_transfer("transjakarta", "transjakarta", distance_meters=121)
     assert not _supports_spatial_transfer("mrt", "transjakarta")

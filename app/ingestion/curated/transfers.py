@@ -6,8 +6,7 @@ import unicodedata
 from datetime import date
 from math import asin, cos, radians, sin, sqrt
 
-from geoalchemy2 import Geography
-from sqlalchemy import cast, func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -24,6 +23,8 @@ MAX_NAMED_TRANSFER_METERS = 350
 MAX_EXPLICIT_TRANSFER_METERS = 500
 MAX_SPATIAL_TRANSFER_METERS = 150
 SPATIAL_CONNECTOR_MODES = {"angkot", "bikun"}
+SAME_MODE_CONNECTOR_MODES = {"transjakarta"}
+MAX_SAME_MODE_TRANSFER_METERS = 120
 
 RAIL_TRANSFERS = (
     ("krl:cawang", "lrt-jabodebek:cikoko"),
@@ -88,21 +89,36 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             func.ST_DWithin(
                 first.location,
                 second.location,
-                0.001347, # roughly 150m in degrees at equator
+                0.001347,  # roughly 150m in degrees at equator
             ),
         )
         .where(
             first.id < second.id,
-            first.mode != second.mode,
             or_(
-                first.mode.in_(SPATIAL_CONNECTOR_MODES),
-                second.mode.in_(SPATIAL_CONNECTOR_MODES),
+                and_(
+                    first.mode != second.mode,
+                    or_(
+                        first.mode.in_(SPATIAL_CONNECTOR_MODES),
+                        second.mode.in_(SPATIAL_CONNECTOR_MODES),
+                    ),
+                ),
+                and_(
+                    first.mode == second.mode,
+                    first.mode.in_(SAME_MODE_CONNECTOR_MODES),
+                ),
             ),
         )
     )
     for first_id, second_id in (await session.execute(spatial_query)).tuples():
         if first_id in stops and second_id in stops:
-            pairs.add(tuple(sorted((first_id, second_id))))
+            first_stop, second_stop = stops[first_id], stops[second_id]
+            distance_meters = _distance_meters(
+                first_stop[2], first_stop[3], second_stop[2], second_stop[3]
+            )
+            if _supports_spatial_transfer(
+                first_stop[1], second_stop[1], distance_meters=distance_meters
+            ):
+                pairs.add(tuple(sorted((first_id, second_id))))
 
     return [
         segment
@@ -111,8 +127,15 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
     ]
 
 
-def _supports_spatial_transfer(first_mode: str, second_mode: str) -> bool:
-    return first_mode != second_mode and bool({first_mode, second_mode} & SPATIAL_CONNECTOR_MODES)
+def _supports_spatial_transfer(
+    first_mode: str, second_mode: str, *, distance_meters: float = 0
+) -> bool:
+    if first_mode == second_mode:
+        return (
+            first_mode in SAME_MODE_CONNECTOR_MODES
+            and distance_meters <= MAX_SAME_MODE_TRANSFER_METERS
+        )
+    return bool({first_mode, second_mode} & SPATIAL_CONNECTOR_MODES)
 
 
 def _is_valid_transjakarta_transfer(

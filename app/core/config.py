@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:3000"
     data_refresh_secret: str = ""
     transjakarta_gtfs_url: str = "https://gtfs.transjakarta.co.id/files/file_gtfs.zip"
+    nvidia_nim_api_key: SecretStr = SecretStr("")
+    nvidia_nim_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_nim_model: str = "meta/llama-3.3-70b-instruct"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

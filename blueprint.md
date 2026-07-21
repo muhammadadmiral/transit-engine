@@ -56,7 +56,7 @@ Alur utama:
 5. pengguna membuka detail itinerary dan melihat jalur di peta;
 6. walking transfer ditampilkan eksplisit sebagai langkah, bukan disembunyikan.
 
-MVP dapat menerjemahkan pin peta menjadi beberapa kandidat stop terdekat yang directionally usable. Route search tetap bekerja dari stop ke stop; connector first/last-mile dari pin belum dihitung sebagai bagian durasi atau itinerary backend. Geocoding nama tempat dan pedestrian turn-by-turn tetap fase lanjutan.
+MVP menerima stop ID maupun koordinat pin. Untuk koordinat, backend membandingkan beberapa stop yang directionally usable secara end-to-end, lalu memasukkan connector jalan kaki first/last-mile ke durasi, itinerary, dan GeoJSON. Connector masih berupa garis akses estimasi; pedestrian turn-by-turn tetap fase lanjutan.
 
 ## 6. Supported network
 
@@ -113,7 +113,7 @@ Data OSM disaring agar generic bus tidak salah diklasifikasikan sebagai angkot. 
 
 - Posisi kendaraan dan gangguan layanan real-time.
 - Jadwal keberangkatan presisi per trip.
-- Door-to-door routing dari koordinat arbitrer.
+- Pedestrian turn-by-turn dan akses dari pin di luar radius coverage transit.
 - Akun pengguna, favorit tersinkron, atau riwayat server-side.
 - Klaim coverage seluruh angkot Jabodetabek.
 - Turn-by-turn pedestrian navigation.
@@ -129,7 +129,7 @@ Data OSM disaring agar generic bus tidak salah diklasifikasikan sebagai angkot. 
 
 ### Phase 2 — better discovery and last mile
 
-- Geocoding nama tempat dan integrasi first/last-mile ke route search.
+- Tingkatkan geocoding/reverse-geocoding dan geometri pedestrian first/last-mile.
 - Perluasan angkot berdasarkan koridor prioritas.
 - Kanal pelaporan koreksi data.
 - Snapshot/version metadata di API.

@@ -35,6 +35,7 @@ def parse_osm_relations(
 
         reference = str(tags.get("ref") or tags.get("name") or relation_id)
         name = str(tags.get("name") or f"Angkot {reference}")
+        route_code = _display_route_code(reference, name)
         route_slug = _normalize(reference)[:MAX_ROUTE_SLUG_LENGTH] or "route"
         route_id = f"angkot:osm:{relation_id}:{route_slug}"
         route_stops: list[tuple[str, tuple[float, float]]] = []
@@ -60,6 +61,7 @@ def parse_osm_relations(
             segments.append(
                 _segment(
                     route_id,
+                    route_code,
                     stop_number - 1,
                     route_stops[-2][0],
                     stop_id,
@@ -80,6 +82,7 @@ def parse_osm_relations(
         segments.append(
             _segment(
                 route_id,
+                route_code,
                 stop_number - 1,
                 route_stops[-2][0],
                 end_id,
@@ -135,6 +138,7 @@ def _stop(stop_id: str, name: str, point: tuple[float, float]) -> Stop:
 
 def _segment(
     route_id: str,
+    route_code: str,
     number: int,
     from_stop_id: str,
     to_stop_id: str,
@@ -146,6 +150,8 @@ def _segment(
     return Segment(
         id=f"{route_id}:g{number}",
         route_id=route_id,
+        route_code=route_code,
+        route_name=name,
         from_stop_id=from_stop_id,
         to_stop_id=to_stop_id,
         mode=TransportMode.ANGKOT,
@@ -164,6 +170,13 @@ def _segment(
 def _normalize(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "-", normalized.casefold()).strip("-")
+
+
+def _display_route_code(reference: str, name: str) -> str:
+    if len(reference) <= 16:
+        return reference.upper()
+    match = re.search(r"\b([A-Z]{0,2}\d{1,3}[A-Z]?)\b", name.upper())
+    return match.group(1) if match else "ANGKOT"
 
 
 def _coordinate_distance(first: tuple[float, float], second: tuple[float, float]) -> float:

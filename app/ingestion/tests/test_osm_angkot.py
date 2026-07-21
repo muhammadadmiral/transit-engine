@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.ingestion.osm.parser import _relation_coordinates, parse_osm_relations
+from app.ingestion.osm.parser import _display_route_code, _relation_coordinates, parse_osm_relations
 from app.models.schema import DataConfidence, ServiceCategory, TransportMode
 
 
@@ -60,3 +60,11 @@ def test_parser_rejects_unrelated_generic_bus() -> None:
 
     assert dataset.segments
     assert all("TransJakarta" not in segment.service_name for segment in dataset.segments)
+
+
+def test_extracts_a_short_display_code_when_osm_ref_is_missing() -> None:
+    assert _display_route_code("37 : Kp Rambutan - Cibinong", "37 : Kp Rambutan - Cibinong") == "37"
+    assert (
+        _display_route_code("Angkot U02 : Tg Priuk - Embrio", "Angkot U02 : Tg Priuk - Embrio")
+        == "U02"
+    )

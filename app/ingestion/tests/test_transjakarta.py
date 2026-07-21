@@ -19,6 +19,8 @@ def test_normalizes_two_directed_segments_and_keeps_boarding_fare() -> None:
             [
                 {
                     "route_id": "1",
+                    "route_short_name": "1",
+                    "route_long_name": "Blok M - Kota",
                     "route_color": "00AA11",
                     "route_desc": "Angkutan Umum Integrasi",
                 }
@@ -98,6 +100,8 @@ def test_normalizes_two_directed_segments_and_keeps_boarding_fare() -> None:
         ("transjakarta:b", "transjakarta:c"),
     ]
     assert {segment.route_id for segment in dataset.segments} == {"transjakarta:1:0"}
+    assert {segment.route_code for segment in dataset.segments} == {"1"}
+    assert {segment.route_name for segment in dataset.segments} == {"Blok M - Kota"}
     assert [segment.avg_duration_min for segment in dataset.segments] == [4, 6]
     assert {segment.fare for segment in dataset.segments} == {3500}
     assert {segment.service_category for segment in dataset.segments} == {ServiceCategory.FEEDER}

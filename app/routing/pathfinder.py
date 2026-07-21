@@ -15,6 +15,7 @@ from app.models.schema import (
     TransportMode,
 )
 from app.routing.geojson_builder import build_feature_collection
+from app.routing.stop_directory import StopSummary
 from app.routing.weights import duration_cost, segment_weight, transfer_penalty
 
 
@@ -34,6 +35,7 @@ def find_route_options(
     payment_profile: PaymentProfile = PaymentProfile.STANDARD,
     fare_catalog: FareCatalog = DEFAULT_FARE_CATALOG,
     additional_segments: list[Segment] | None = None,
+    stop_directory: "dict[str, StopSummary] | None" = None,
 ) -> list[RouteOption]:
     """Calculate both public objectives while sharing one expanded state graph."""
     prepared_state_graph = _build_state_graph(
@@ -42,7 +44,7 @@ def find_route_options(
         max_transfers,
         additional_segments=additional_segments,
     )
-    return [
+    options = [
         find_route(
             graph,
             origin_stop_id,
@@ -57,6 +59,32 @@ def find_route_options(
         )
         for criteria in (SearchCriteria.FASTEST, SearchCriteria.CHEAPEST)
     ]
+    if stop_directory is not None:
+        for option in options:
+            _apply_stop_directory(option, stop_directory)
+    return options
+
+
+def _apply_stop_directory(option: RouteOption, directory: "dict[str, StopSummary]") -> None:
+    """Mutate a route option's segments so the UI can show names + coordinates
+    rather than the raw internal stop IDs."""
+    enriched: list[Segment] = []
+    for segment in option.segments:
+        from_entry = directory.get(segment.from_stop_id)
+        to_entry = directory.get(segment.to_stop_id)
+        enriched.append(
+            segment.model_copy(
+                update={
+                    "from_stop_name": from_entry.name if from_entry else segment.from_stop_name,
+                    "to_stop_name": to_entry.name if to_entry else segment.to_stop_name,
+                    "from_stop_lat": from_entry.lat if from_entry else None,
+                    "from_stop_lng": from_entry.lng if from_entry else None,
+                    "to_stop_lat": to_entry.lat if to_entry else None,
+                    "to_stop_lng": to_entry.lng if to_entry else None,
+                }
+            )
+        )
+    option.segments = enriched
 
 
 def find_route(

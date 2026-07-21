@@ -21,6 +21,8 @@ class SegmentRecord(Base):
 
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
     route_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    route_code: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    route_name: Mapped[str] = mapped_column(String(255), nullable=False)
     from_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
     to_stop_id: Mapped[str] = mapped_column(ForeignKey("stops.id"), nullable=False, index=True)
     mode: Mapped[str] = mapped_column(String(32), nullable=False, index=True)

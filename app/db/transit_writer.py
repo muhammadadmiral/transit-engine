@@ -57,6 +57,8 @@ async def insert_segments(session: AsyncSession, segments: list[Segment]) -> Non
         {
             "id": segment.id,
             "route_id": segment.route_id,
+            "route_code": segment.route_code,
+            "route_name": segment.route_name,
             "from_stop_id": segment.from_stop_id,
             "to_stop_id": segment.to_stop_id,
             "mode": segment.mode.value,
@@ -81,6 +83,8 @@ async def insert_segments(session: AsyncSession, segments: list[Segment]) -> Non
             index_elements=["id"],
             set_={
                 "route_id": stmt.excluded.route_id,
+                "route_code": stmt.excluded.route_code,
+                "route_name": stmt.excluded.route_name,
                 "from_stop_id": stmt.excluded.from_stop_id,
                 "to_stop_id": stmt.excluded.to_stop_id,
                 "mode": stmt.excluded.mode,

@@ -125,6 +125,8 @@ def normalize_feed(
             fare=route_fares.get(route_id, DEFAULT_FARE),
             color=_route_color(route_rows.get(route_id, {})),
             service_name=_service_name(route_rows.get(route_id, {})),
+            route_code=_route_code(route_rows.get(route_id, {})),
+            route_name=_route_name(route_rows.get(route_id, {})),
             coordinates=geometries[(route_id, direction_id, from_stop_id, to_stop_id)],
             verified_at=verified_at,
         )
@@ -143,6 +145,8 @@ def _build_segment(
     fare: int,
     color: str,
     service_name: str,
+    route_code: str,
+    route_name: str,
     coordinates: list[tuple[float, float]],
     verified_at: date,
 ) -> Segment:
@@ -151,6 +155,8 @@ def _build_segment(
     return Segment(
         id=f"transjakarta:{route_id}:{direction_id}:{from_stop_id}:{to_stop_id}",
         route_id=f"transjakarta:{route_id}:{direction_id}",
+        route_code=route_code,
+        route_name=route_name,
         from_stop_id=f"transjakarta:{from_stop_id}",
         to_stop_id=f"transjakarta:{to_stop_id}",
         mode=TransportMode.TRANSJAKARTA,
@@ -195,6 +201,16 @@ def _service_name(route: dict[str, Any]) -> str:
             f"unsupported TransJakarta route_desc {service_name!r} for route {route_id}"
         )
     return service_name
+
+
+def _route_code(route: dict[str, Any]) -> str:
+    return str(route.get("route_short_name") or route.get("route_id") or "?").strip()
+
+
+def _route_name(route: dict[str, Any]) -> str:
+    code = _route_code(route)
+    long_name = str(route.get("route_long_name") or "").strip()
+    return long_name or f"TransJakarta {code}"
 
 
 def _service_category(service_name: str) -> ServiceCategory:

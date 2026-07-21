@@ -22,11 +22,10 @@ def upgrade() -> None:
         sa.Column("fare_product_id", sa.String(length=120), nullable=True),
     )
     op.execute(
-        "UPDATE segments SET fare_product_id = 'transjakarta:regular' "
-        "WHERE mode = 'transjakarta'"
+        "UPDATE segments SET fare_product_id = 'transjakarta:regular' WHERE mode = 'transjakarta'"
     )
     op.execute(
-        "UPDATE segments SET fare_product_id = 'legacy:' || mode " "WHERE fare_product_id IS NULL"
+        "UPDATE segments SET fare_product_id = 'legacy:' || mode WHERE fare_product_id IS NULL"
     )
     op.alter_column("segments", "fare_product_id", nullable=False)
     op.create_index("ix_segments_fare_product_id", "segments", ["fare_product_id"])

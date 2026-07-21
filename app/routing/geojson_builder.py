@@ -7,6 +7,8 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
             geometry={"type": "LineString", "coordinates": segment.coordinates},
             properties={
                 "segmentId": segment.id,
+                "routeCode": segment.route_code,
+                "routeName": segment.route_name,
                 "mode": segment.mode.value,
                 "serviceCategory": segment.service_category.value,
                 "serviceName": segment.service_name,

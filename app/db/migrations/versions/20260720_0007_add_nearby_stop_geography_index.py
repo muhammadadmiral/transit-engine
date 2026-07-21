@@ -17,7 +17,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.execute(
-        "CREATE INDEX ix_stops_location_geography " "ON stops USING gist ((location::geography))"
+        "CREATE INDEX ix_stops_location_geography ON stops USING gist ((location::geography))"
     )
 
 

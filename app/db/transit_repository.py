@@ -44,6 +44,8 @@ def segment_from_record(record: SegmentRecord, geometry_json: str) -> Segment:
     return Segment(
         id=record.id,
         route_id=record.route_id,
+        route_code=record.route_code,
+        route_name=record.route_name,
         from_stop_id=record.from_stop_id,
         to_stop_id=record.to_stop_id,
         mode=record.mode,
@@ -220,8 +222,9 @@ async def list_route_overviews(
     statement = (
         select(
             SegmentRecord.route_id,
+            SegmentRecord.route_code,
             SegmentRecord.mode,
-            SegmentRecord.service_name,
+            SegmentRecord.route_name,
             SegmentRecord.color,
             SegmentRecord.service_category,
             func.count().label("segment_count"),
@@ -229,12 +232,13 @@ async def list_route_overviews(
         .where(*conditions)
         .group_by(
             SegmentRecord.route_id,
+            SegmentRecord.route_code,
             SegmentRecord.mode,
-            SegmentRecord.service_name,
+            SegmentRecord.route_name,
             SegmentRecord.color,
             SegmentRecord.service_category,
         )
-        .order_by(SegmentRecord.service_name, SegmentRecord.route_id)
+        .order_by(SegmentRecord.route_name, SegmentRecord.route_code)
         .offset(offset)
         .limit(limit)
     )
@@ -243,12 +247,21 @@ async def list_route_overviews(
     total = await session.scalar(count_statement)
     items = []
     for row in result.tuples():
-        route_id, stored_mode, service_name, color, service_category, segment_count = row
+        (
+            route_id,
+            route_code,
+            stored_mode,
+            route_name,
+            color,
+            service_category,
+            segment_count,
+        ) = row
         items.append(
             RouteOverview(
                 id=route_id,
+                code=route_code,
                 mode=stored_mode,
-                name=service_name,
+                name=route_name,
                 color=color,
                 service_category=service_category,
                 segment_count=segment_count,

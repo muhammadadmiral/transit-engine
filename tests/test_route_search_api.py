@@ -98,6 +98,10 @@ async def test_coordinate_route_search_chooses_candidates_in_backend(monkeypatch
         "walk",
     ]
     assert body["options"][0]["segments"][1]["routeCode"] == "JAK.44"
+    # Fake session can't query the stops table; segments keep their raw IDs.
+    ride = body["options"][0]["segments"][1]
+    assert ride["fromStopId"] == "origin-stop"
+    assert ride["toStopId"] == "destination-stop"
 
 
 @pytest.mark.asyncio
