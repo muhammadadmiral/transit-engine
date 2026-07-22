@@ -37,3 +37,7 @@ def test_geojson_exposes_eta_provenance() -> None:
     assert properties["trafficFactor"] == 1.4
     assert properties["trafficSource"] == "live_tomtom"
     assert properties["trafficUpdatedAt"] == updated.isoformat()
+    assert properties["gradientStart"] == "#F59E0B"
+    assert properties["gradientMid"] == "#22A447"
+    assert properties["gradientEnd"] == "#FDE68A"
+    assert properties["animationDirection"] == "forward"

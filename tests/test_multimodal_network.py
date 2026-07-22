@@ -23,7 +23,7 @@ def test_live_network_layers_and_representative_multimodal_routes() -> None:
 
         bikun_stops = client.get("/network/stops", params={"mode": "bikun", "limit": 500})
         assert bikun_stops.status_code == 200
-        assert bikun_stops.json()["total"] == 10
+        assert bikun_stops.json()["total"] == 19
 
         angkot_stops = client.get("/network/stops", params={"mode": "angkot", "limit": 1})
         assert angkot_stops.status_code == 200
@@ -184,3 +184,34 @@ def test_live_network_layers_and_representative_multimodal_routes() -> None:
         }
         assert ("bikun", "BLUE") in modes_and_codes
         assert ("angkot", "D11") in modes_and_codes
+
+        ft_to_margonda_gate = client.post(
+            "/route-search",
+            json={
+                "originStopId": "bikun:teknik",
+                "destinationLat": -6.3593023,
+                "destinationLng": 106.8343696,
+                "destinationLabel": "Jalan tikus Margonda menuju Kukusan",
+                "accessRadiusMeters": 1500,
+                "maxTransfers": 5,
+            },
+        )
+        assert ft_to_margonda_gate.status_code == 200
+        fastest_gate = next(
+            option
+            for option in ft_to_margonda_gate.json()["options"]
+            if option["criteria"] == "fastest"
+        )
+        assert [segment["routeCode"] for segment in fastest_gate["segments"]] == [
+            "RED",
+            "WALK",
+            "GATE",
+            "WALK",
+        ]
+        crossing = fastest_gate["segments"][2]
+        assert crossing["accessAction"] == "paid_station_crossing"
+        assert crossing["walkingRouteSource"] == "curated"
+        assert "tap keluar" in crossing["instruction"].casefold()
+        bikun_feature = fastest_gate["geojson"]["features"][0]
+        assert bikun_feature["properties"]["gradientStart"] == "#FFD43B"
+        assert bikun_feature["properties"]["animationDirection"] == "forward"

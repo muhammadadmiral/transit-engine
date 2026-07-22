@@ -21,7 +21,7 @@ Routing backend untuk **TransHub Jabodetabek**, sebuah perencana perjalanan tran
 | LRT Jabodebek | Dataset jaringan terkurasi | Estimasi berbasis jarak dan waktu |
 | KRL Jabodetabek | Topologi dan geometri jaringan terkurasi | Estimasi band jarak |
 | Angkot | GIS resmi Kabupaten Bogor, regulasi Depok, dan OSM terverifikasi | Rentang estimasi |
-| Bikun UI | Dataset kampus terkurasi | Gratis |
+| Bikun UI | Relasi rute dan halte OSM yang ditinjau, mengikuti jalan kampus | Gratis |
 | Ojek online fallback | Koneksi terakhir saat tidak ada transit dalam radius jalan kaki | Rentang estimasi, bukan quote operator |
 
 Angkot dimodelkan sebagai koridor *hail-and-ride*, bukan halte fiktif. Titik naik/turun diproyeksikan ke koridor pada runtime sehingga pengguna dapat naik atau turun di bagian jalan yang dilalui. Setiap koridor tetap membawa label `official` atau `community`; harga tidak dipresentasikan sebagai angka pasti.
@@ -61,7 +61,7 @@ Docker Compose juga tersedia untuk menjalankan API dan PostGIS secara lokal. Sem
 
 ## Status dan batasan
 
-Proyek ini masih aktif dikembangkan. Jadwal rel memakai frekuensi resmi; ETA moda jalan memakai TomTom Traffic Flow bila key tersedia dan profil waktu yang diberi label bila tidak. Data komunitas dapat tidak lengkap atau berbeda dari kondisi lapangan. TransHub independen dan tidak berafiliasi dengan operator transportasi mana pun.
+Proyek ini masih aktif dikembangkan. Jadwal rel memakai frekuensi resmi; ETA moda jalan memakai rasio current-versus-historical TomTom bila key tersedia, Google Routes sebagai fallback opsional berbujet, dan profil waktu yang diberi label bila tidak. Data komunitas dapat tidak lengkap atau berbeda dari kondisi lapangan. TransHub independen dan tidak berafiliasi dengan operator transportasi mana pun.
 
 ## License
 
