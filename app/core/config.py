@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     )
     traffic_timeout_seconds: float = 2.5
     traffic_cache_ttl_seconds: int = 300
+    routing_max_concurrency: int = 1
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

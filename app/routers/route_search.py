@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from typing import Annotated
 
@@ -25,14 +26,23 @@ from app.routing.pedestrian import get_pedestrian_router
 from app.routing.schedule_cache import get_schedule_index
 from app.routing.stop_directory import build_stop_directory
 from app.routing.traffic import get_traffic_estimator
+from app.core.config import get_settings
 
 router = APIRouter(prefix="/route-search", tags=["route-search"])
+_routing_slots = asyncio.Semaphore(max(1, get_settings().routing_max_concurrency))
+
+
+async def _routing_slot():
+    """Bound memory-heavy searches on small shared-CPU deployments."""
+    async with _routing_slots:
+        yield
 
 
 @router.post("", response_model=RouteSearchResponse)
 async def route_search(
     request: RouteSearchRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
+    _slot: Annotated[None, Depends(_routing_slot)],
 ) -> RouteSearchResponse:
     try:
         graph = await get_routing_graph(session)

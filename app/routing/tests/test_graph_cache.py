@@ -32,11 +32,13 @@ async def test_reuses_graph_until_invalidated(monkeypatch) -> None:
     monkeypatch.setattr(graph_cache, "load_all_stops", load_all_stops)
     graph_cache.invalidate_graph_cache()
 
-    first = await graph_cache.get_routing_graph(object())
-    second = await graph_cache.get_routing_graph(object())
+    session = object()
+    first = await graph_cache.get_routing_graph(session)
+    second = await graph_cache.get_routing_graph(session)
 
     assert first is second
     assert load_segments.await_count == 1
+    load_segments.assert_awaited_once_with(session, include_walk=False)
     assert load_flexible_routes.await_count == 1
 
     graph_cache.invalidate_graph_cache()
