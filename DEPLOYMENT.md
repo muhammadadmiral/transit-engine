@@ -35,7 +35,11 @@ Dataset transit dirilis terpisah dari schema aplikasi:
 
 Fetcher yang gagal tidak boleh mengosongkan dataset production. Data baru harus lolos validasi model dan smoke test representatif sebelum dianggap siap.
 
-`TOMTOM_TRAFFIC_API_KEY` bersifat opsional dan hanya disimpan di backend. Tanpa key, respons tetap tersedia dengan `trafficSource=historical_profile`; backend tidak menyebut estimasi tersebut sebagai data aktual.
+`TOMTOM_API_KEY` bersifat opsional dan hanya disimpan di backend. Satu key dipakai untuk Search/Reverse, pedestrian dan ojek routing, Matrix, Traffic Flow, serta perintah map-matching offline. `TOMTOM_TRAFFIC_API_KEY` tetap diterima untuk kompatibilitas. Tanpa key, Valhalla/OSM menangani geometri jalan, Nominatim/Photon menangani geocode, dan ETA jalan diberi label `trafficSource=historical_profile`—bukan diklaim sebagai traffic aktual.
+
+Cuaca berjalan dari Open-Meteo dengan cache 10 menit dan hanya menyesuaikan leg jalan kaki untuk keberangkatan saat ini. Traffic TomTom sudah mencerminkan dampak hujan yang benar-benar terjadi di jalan; backend tidak menambahkan penalti hujan kedua pada kendaraan.
+
+Pada instance kecil gunakan `ROUTING_MAX_CONCURRENCY=1`. Graph transit disimpan satu kali per proses, konektor jalan tidak dipersist sebagai edge semua-ke-semua, dan panggilan provider dibatasi semaphore/cache. Jika RSS tetap melewati batas paket gratis setelah startup dan satu pencarian, naikkan RAM; menambah worker justru menggandakan graph in-memory.
 
 ## Public deployment
 

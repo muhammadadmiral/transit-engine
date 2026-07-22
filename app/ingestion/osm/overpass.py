@@ -22,6 +22,7 @@ REGIONS = {
 
 def build_query(bbox: str) -> str:
     pattern = "angkot|angkutan kota|mikrolet|kwk|koasi"
+    local_ref = "^(D|K|A|B|C|E|F)[ .-]?[0-9]{1,3}[A-Z]?$"
     return f"""
     [out:json][timeout:180];
     (
@@ -30,6 +31,8 @@ def build_query(bbox: str) -> str:
       relation["route"="bus"]["name"~"{pattern}",i]({bbox});
       relation["route"="bus"]["operator"~"{pattern}",i]({bbox});
       relation["route"="bus"]["network"~"{pattern}",i]({bbox});
+      relation["route"="bus"]["ref"~"{local_ref}",i]({bbox});
+      relation["route"="bus"]["name"~"trayek",i]({bbox});
     );
     out geom;
     """

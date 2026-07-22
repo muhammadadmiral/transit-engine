@@ -204,9 +204,83 @@ def test_get_pedestrian_router_is_cached() -> None:
 def test_invalidate_pedestrian_cache_clears_singleton() -> None:
     pedestrian.get_pedestrian_router.cache_clear()
     router = get_pedestrian_router()
-    router._cache[((0.0, 0.0), (0.0, 0.0))] = (
+    router._cache[((0.0, 0.0), (0.0, 0.0), "walk")] = (
         0.0,
         pedestrian.PedestrianRoute([(0.0, 0.0), (1.0, 1.0)], 1.0, 1.0),
     )
     pedestrian.invalidate_pedestrian_cache()
     assert router._cache == {}
+
+
+@pytest.mark.asyncio
+async def test_tomtom_matrix_measures_real_candidate_access() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/routing/matrix/2"
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "originIndex": 0,
+                        "destinationIndex": 0,
+                        "routeSummary": {
+                            "lengthInMeters": 640,
+                            "travelTimeInSeconds": 510,
+                        },
+                    }
+                ]
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    router = PedestrianRouter(
+        base_url="",
+        tomtom_api_key="test",
+        tomtom_matrix_url="https://api.tomtom.test/routing/matrix/2",
+        client=client,
+    )
+
+    result = await router.measure_distances((106.8, -6.2), [(106.81, -6.21)])
+    await client.aclose()
+
+    assert result[0].distance_meters == 640
+    assert result[0].duration_min == 8.5
+
+
+@pytest.mark.asyncio
+async def test_tomtom_matrix_uses_motorcycle_for_ride_hail() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert b'"travelMode":"motorcycle"' in request.content
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "originIndex": 0,
+                        "destinationIndex": 0,
+                        "routeSummary": {
+                            "lengthInMeters": 3100,
+                            "travelTimeInSeconds": 720,
+                        },
+                    }
+                ]
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    router = PedestrianRouter(
+        base_url="",
+        tomtom_api_key="test",
+        tomtom_matrix_url="https://api.tomtom.test/routing/matrix/2",
+        client=client,
+    )
+
+    result = await router.measure_distances(
+        (106.8, -6.2),
+        [(106.81, -6.21)],
+        TransportMode.RIDE_HAIL,
+    )
+    await client.aclose()
+
+    assert result[0].distance_meters == 3100
+    assert result[0].duration_min == 12

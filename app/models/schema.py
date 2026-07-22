@@ -57,6 +57,10 @@ class TrafficSource(StrEnum):
     LIVE_TOMTOM = "live_tomtom"
 
 
+class WeatherSource(StrEnum):
+    OPEN_METEO = "open_meteo"
+
+
 class ServiceCategory(StrEnum):
     MAIN = "main"
     FEEDER = "feeder"
@@ -162,12 +166,17 @@ class Segment(SchemaModel):
     to_stop_lat: float | None = None
     to_stop_lng: float | None = None
     walking_distance_meters: float | None = Field(default=None, ge=0)
+    distance_meters: float | None = Field(default=None, ge=0)
     walking_route_source: WalkingRouteSource | None = None
     scheduled_wait_min: float = Field(default=0, ge=0)
     schedule_source_url: str | None = None
     traffic_factor: float | None = Field(default=None, ge=0.1, le=5)
     traffic_source: TrafficSource | None = None
     traffic_updated_at: datetime | None = None
+    weather_factor: float | None = Field(default=None, ge=1, le=2)
+    weather_source: WeatherSource | None = None
+    weather_updated_at: datetime | None = None
+    precipitation_mm: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def fill_route_display_fields(self) -> "Segment":
@@ -259,7 +268,7 @@ class RouteSearchRequest(SchemaModel):
     destination_lng: Annotated[float | None, Field(default=None, ge=-180, le=180)]
     access_radius_meters: Annotated[int, Field(ge=100, le=5000)] = 750
     allow_ride_hail: bool = True
-    ride_hail_radius_meters: Annotated[int, Field(ge=1000, le=15000)] = 8000
+    ride_hail_radius_meters: Annotated[int, Field(ge=1000, le=15000)] = 12000
     max_transfers: Annotated[int, Field(ge=0, le=5)] = 5
     departure_at: datetime | None = None
     payment_profile: PaymentProfile = PaymentProfile.STANDARD
@@ -327,6 +336,7 @@ class RouteOption(SchemaModel):
     criteria: SearchCriteria
     total_duration_min: float
     total_fare: int
+    total_distance_meters: float = Field(default=0, ge=0)
     fare_quote: FareQuote
     transfer_count: int
     segments: list[Segment]
