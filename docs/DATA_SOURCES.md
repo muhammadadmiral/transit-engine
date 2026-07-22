@@ -14,6 +14,7 @@ The backend is the only owner of geocoding, transit data, schedules, fares, and 
 | Other conventional angkot | Filtered OpenStreetMap route relations | Community |
 | Geocoding | TomTom Search/Reverse when configured, with Nominatim and Photon fallbacks | External/community |
 | Current road traffic | TomTom Flow Segment Data when configured | External/live |
+| Current precipitation | Open-Meteo current conditions | External/live |
 | Road map matching | TomTom Snap to Roads, optional reviewed refinement | External |
 | Road ETA fallback | Jakarta day/time profile | Estimated |
 | Ojek online fallback | Nearest transit connector only; no operator API | Estimated |
@@ -45,6 +46,24 @@ Set `TOMTOM_API_KEY` only on the backend. The same secret enables POI/address se
 ```
 
 The refiner follows the already sourced trace and rejects shifted endpoints or implausible length changes. It does not ask a road router to invent the path between termini. Review provider licensing before persisting production-derived geometry.
+
+Short gaps of 350–1,500 metres inside an otherwise sourced trace can be filled
+through the configured Valhalla/OSM road network. Larger holes are rejected:
+
+```bash
+.venv/bin/python -m app.ingestion.geometry.repair_angkot_gaps
+.venv/bin/python -m app.ingestion.geometry.repair_angkot_gaps --apply
+```
+
+OSM relation members are reordered only when they form a continuous chain.
+Relations with more than five percent disconnected members are quarantined
+instead of being rendered as straight lines.
+
+The current curated Depok inbound traces for D03, D11, and D105 are community
+reverse-direction approximations. Their remaining sub-1.2 km sparse spans are
+not auto-routed because legal car routing produces multi-kilometre one-way
+detours that are not evidence of the angkot's licensed inbound streets. Replace
+them only with an attributable inbound trace or reviewed field observation.
 
 ## Refresh commands
 

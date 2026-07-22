@@ -67,6 +67,19 @@ class EstimatedRangeFareRule:
 
 
 @dataclass(frozen=True)
+class DistanceRangeFareRule:
+    product_id: str
+    base_amount: int
+    per_km_amount: int
+    min_base_amount: int
+    min_per_km_amount: int
+    max_base_amount: int
+    max_per_km_amount: int
+    source_url: str | None
+    model: FareModel = FareModel.ESTIMATED_RANGE
+
+
+@dataclass(frozen=True)
 class TimeDistanceCapFareRule:
     product_id: str
     base_amount: int
@@ -83,6 +96,7 @@ FareRule = (
     | OdMatrixFareRule
     | DistanceBandFareRule
     | EstimatedRangeFareRule
+    | DistanceRangeFareRule
     | TimeDistanceCapFareRule
 )
 
@@ -218,6 +232,12 @@ def _quote_ride(
         cap = rule.peak_cap if _is_weekday_peak(departure_at) else rule.offpeak_cap
         fare = min(uncapped, cap)
         return _component(first, rule, FareStatus.ESTIMATED, fare, fare, fare)
+    if isinstance(rule, DistanceRangeFareRule):
+        distance = sum(_segment_distance_km(segment) for segment in ride)
+        estimated = _round_thousand(rule.base_amount + distance * rule.per_km_amount)
+        minimum = _round_thousand(rule.min_base_amount + distance * rule.min_per_km_amount)
+        maximum = _round_thousand(rule.max_base_amount + distance * rule.max_per_km_amount)
+        return _component(first, rule, FareStatus.RANGE, estimated, minimum, maximum)
     return _component(
         first,
         rule,
@@ -248,7 +268,13 @@ def _component(
     )
 
 
+def _round_thousand(value: float) -> int:
+    return max(1000, int(round(value / 1000) * 1000))
+
+
 def _segment_distance_km(segment: Segment) -> float:
+    if segment.distance_meters is not None:
+        return segment.distance_meters / 1000
     from math import asin, cos, radians, sin, sqrt
 
     distance = 0.0

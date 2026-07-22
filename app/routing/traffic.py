@@ -93,7 +93,17 @@ class RoadTrafficEstimator:
         )
 
     async def _live_factor(self, segment: Segment) -> tuple[float, datetime] | None:
-        lng, lat = segment.coordinates[len(segment.coordinates) // 2]
+        samples = _traffic_sample_points(segment.coordinates)
+        values = await asyncio.gather(*(self._live_factor_at(lat, lng) for lng, lat in samples))
+        available = [value for value in values if value is not None]
+        if not available:
+            return None
+        return (
+            sum(value[0] for value in available) / len(available),
+            max(value[1] for value in available),
+        )
+
+    async def _live_factor_at(self, lat: float, lng: float) -> tuple[float, datetime] | None:
         key = (round(lat, 3), round(lng, 3))
         cached = self._cache.get(key)
         if cached and monotonic() - cached[0] < self.settings.traffic_cache_ttl_seconds:
@@ -133,6 +143,15 @@ def _local_time(value: datetime | None) -> datetime:
     if value is None:
         return datetime.now(JAKARTA)
     return value.replace(tzinfo=JAKARTA) if value.tzinfo is None else value.astimezone(JAKARTA)
+
+
+def _traffic_sample_points(
+    coordinates: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    if len(coordinates) < 8:
+        return [coordinates[len(coordinates) // 2]]
+    indices = sorted({len(coordinates) // 4, len(coordinates) // 2, len(coordinates) * 3 // 4})
+    return [coordinates[index] for index in indices]
 
 
 @lru_cache

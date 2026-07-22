@@ -47,8 +47,8 @@ def materialize_flexible_segments(routes: list[FlexibleRoute]) -> list[Segment]:
                     last_verified_at=route.last_verified_at,
                     color=route.color,
                     coordinates=[first, second],
-                    from_stop_name=f"Koridor {route.route_code} (naik fleksibel)",
-                    to_stop_name=f"Koridor {route.route_code} (turun fleksibel)",
+                    from_stop_name=f"Koridor {route.route_code}",
+                    to_stop_name=f"Koridor {route.route_code}",
                     from_stop_lat=first[1],
                     from_stop_lng=first[0],
                     to_stop_lat=second[1],
@@ -75,6 +75,9 @@ def add_flexible_transfers(graph: nx.MultiDiGraph, fixed_stops: list[Stop]) -> N
     flex_nodes = [
         (node_id, data) for node_id, data in graph.nodes(data=True) if data.get("flexible")
     ]
+    best_fixed_connections: dict[
+        tuple[str, str], tuple[float, str, dict[str, object], Stop]
+    ] = {}
     for node_id, data in flex_nodes:
         lat, lng = float(data["lat"]), float(data["lng"])
         nearest_by_mode: dict[TransportMode, tuple[float, Stop]] = {}
@@ -91,15 +94,25 @@ def add_flexible_transfers(graph: nx.MultiDiGraph, fixed_stops: list[Stop]) -> N
             current = nearest_by_mode.get(mode)
             if current is None or distance < current[0]:
                 nearest_by_mode[mode] = (distance, stop)
-        for _, stop in nearest_by_mode.values():
-            add_walking_pair(
-                graph,
-                node_id,
-                stop.id,
-                (lat, lng),
-                (stop.lat, stop.lng),
-                f"flex-fixed:{node_id}:{stop.id}",
-            )
+        route_id = str(data["flexible_route_id"])
+        for distance, stop in nearest_by_mode.values():
+            key = (route_id, stop.id)
+            current = best_fixed_connections.get(key)
+            if current is None or distance < current[0]:
+                best_fixed_connections[key] = (distance, node_id, data, stop)
+
+    # A fixed stop may sit close to multiple points of a winding corridor. Keep
+    # only its closest point per directed route, otherwise the stop becomes an
+    # artificial walking shortcut between distant portions of the same route.
+    for _, node_id, data, stop in best_fixed_connections.values():
+        add_walking_pair(
+            graph,
+            node_id,
+            stop.id,
+            (float(data["lat"]), float(data["lng"])),
+            (stop.lat, stop.lng),
+            f"flex-fixed:{node_id}:{stop.id}",
+        )
 
     flex_grid: dict[tuple[int, int], list[tuple[str, dict[str, object]]]] = defaultdict(list)
     for item in flex_nodes:
@@ -112,9 +125,11 @@ def add_flexible_transfers(graph: nx.MultiDiGraph, fixed_stops: list[Stop]) -> N
         lat, lng = float(data["lat"]), float(data["lng"])
         nearest_by_route: dict[str, tuple[float, str, dict[str, object]]] = {}
         own_route = str(data["flexible_route_id"])
+        own_code = str(data.get("flexible_route_code") or "")
         for other_id, other in _nearby_grid(flex_grid, lat, lng, cell_radius=1):
             other_route = str(other["flexible_route_id"])
-            if other_route == own_route:
+            other_code = str(other.get("flexible_route_code") or "")
+            if other_route == own_route or (own_code and other_code == own_code):
                 continue
             distance = distance_meters(lat, lng, float(other["lat"]), float(other["lng"]))
             if distance > FLEX_TRANSFER_RADIUS_METERS:

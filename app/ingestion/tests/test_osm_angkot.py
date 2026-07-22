@@ -37,6 +37,33 @@ def test_relation_geometry_reverses_member_to_keep_route_continuous() -> None:
     ]
 
 
+def test_relation_geometry_reorders_connected_members() -> None:
+    source = relation(12)
+    source["members"] = [source["members"][1], source["members"][0]]
+
+    coordinates = _relation_coordinates(source)
+
+    assert coordinates in (
+        [(106.8, -6.2), (106.81, -6.2), (106.82, -6.2)],
+        [(106.82, -6.2), (106.81, -6.2), (106.8, -6.2)],
+    )
+
+
+def test_relation_geometry_rejects_kilometre_scale_hole() -> None:
+    source = relation(13)
+    source["members"].append(
+        {
+            "type": "way",
+            "geometry": [
+                {"lon": 106.9, "lat": -6.3},
+                {"lon": 106.91, "lat": -6.31},
+            ],
+        }
+    )
+
+    assert _relation_coordinates(source) == []
+
+
 def test_parser_deduplicates_relations_and_builds_bounded_ids() -> None:
     source = relation(123456789, name="Angkot " + "A" * 200)
     routes = parse_osm_relations([source, source], verified_at=date(2026, 7, 20))
@@ -63,6 +90,29 @@ def test_parser_rejects_unrelated_generic_bus() -> None:
 
     assert routes
     assert all("TransJakarta" not in route.service_name for route in routes)
+
+
+def test_parser_accepts_local_route_ref_without_angkot_keyword() -> None:
+    source = relation(3, route="bus", name="Limo - Pasar Minggu")
+    source["tags"]["ref"] = "D61"
+
+    routes = parse_osm_relations([source])
+
+    assert routes[0].route_code == "D61"
+
+
+def test_parser_does_not_misclassify_transjakarta_local_ref() -> None:
+    source = relation(4, route="bus", name="Transjabodetabek Cinere - Senayan")
+    source["tags"]["ref"] = "D32"
+
+    assert parse_osm_relations([source]) == []
+
+
+def test_parser_does_not_misclassify_trans_tangerang_as_angkot() -> None:
+    source = relation(5, route="bus", name="Trans Tangerang Ayo Koridor 1")
+    source["tags"]["ref"] = "K1"
+
+    assert parse_osm_relations([source]) == []
 
 
 def test_extracts_a_short_display_code_when_osm_ref_is_missing() -> None:

@@ -3,17 +3,29 @@
 from dataclasses import dataclass
 from datetime import date
 
+from app.ingestion.curated.angkot_depok_additions import (
+    D83_INBOUND,
+    D83_OUTBOUND,
+    D105_INBOUND,
+    D105_OUTBOUND,
+)
 from app.models.schema import DataConfidence, FlexibleRoute, ServiceCategory, TransportMode
 
 VERIFIED_AT = date(2026, 7, 22)
 SOURCE_URL = "https://jdih.depok.go.id/uploads/FileFinalProduk/20250422100127_2025pw3224007.pdf"
+BPTJ_SOURCE_URL = (
+    "https://ppid.kemenhub.go.id/fileupload/informasi-berkala/"
+    "20250508143913.LKIP_BPTJ_2024_compressed-dikompresi_%281%29.pdf"
+)
 
 
 @dataclass(frozen=True)
 class CuratedRoute:
     code: str
     name: str
-    geometry: tuple[tuple[float, float], ...]
+    outbound_geometry: tuple[tuple[float, float], ...]
+    inbound_geometry: tuple[tuple[float, float], ...] | None = None
+    source_url: str = SOURCE_URL
 
 
 # Terminal Depok -> Parung via AR Hakim, Nusantara, Sawangan, Muchtar, Parung.
@@ -124,6 +136,20 @@ _D11 = (
 ROUTES = (
     CuratedRoute("D03", "Terminal Depok – Parung via Sawangan", _D03),
     CuratedRoute("D11", "Terminal Depok – Palsigunung via Akses UI", _D11),
+    CuratedRoute(
+        "D83",
+        "Tanah Baru – Lenteng Agung via Srengseng Sawah",
+        D83_OUTBOUND,
+        D83_INBOUND,
+        BPTJ_SOURCE_URL,
+    ),
+    CuratedRoute(
+        "D105",
+        "Terminal Depok – Pondok Labu via Tanah Baru dan Gandul",
+        D105_OUTBOUND,
+        D105_INBOUND,
+        BPTJ_SOURCE_URL,
+    ),
 )
 
 
@@ -132,8 +158,8 @@ def build_depok_angkot_routes() -> list[FlexibleRoute]:
     for route in ROUTES:
         route_key = route.code.casefold()
         for direction, coordinates in (
-            ("outbound", route.geometry),
-            ("inbound", tuple(reversed(route.geometry))),
+            ("outbound", route.outbound_geometry),
+            ("inbound", route.inbound_geometry or tuple(reversed(route.outbound_geometry))),
         ):
             result.append(
                 FlexibleRoute(
@@ -150,7 +176,7 @@ def build_depok_angkot_routes() -> list[FlexibleRoute]:
                     last_verified_at=VERIFIED_AT,
                     color="F59E0B",
                     coordinates=list(coordinates),
-                    source_url=SOURCE_URL,
+                    source_url=route.source_url,
                 )
             )
     return result

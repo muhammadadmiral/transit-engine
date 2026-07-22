@@ -15,6 +15,7 @@ def build_graph(segments: list[Segment]) -> nx.MultiDiGraph:
             name=segment.from_stop_name,
             flexible=is_flexible,
             flexible_route_id=segment.route_id if is_flexible else None,
+            flexible_route_code=segment.route_code if is_flexible else None,
         )
         is_flexible = segment.to_stop_id.startswith("flex:")
         graph.add_node(
@@ -24,6 +25,7 @@ def build_graph(segments: list[Segment]) -> nx.MultiDiGraph:
             name=segment.to_stop_name,
             flexible=is_flexible,
             flexible_route_id=segment.route_id if is_flexible else None,
+            flexible_route_code=segment.route_code if is_flexible else None,
         )
         graph.add_edge(segment.from_stop_id, segment.to_stop_id, key=segment.id, segment=segment)
     return graph

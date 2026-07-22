@@ -16,6 +16,7 @@ from app.models.schema import (
 )
 from app.routers import route_search as route_search_router
 from app.routing.graph import build_graph
+from app.routing.pedestrian import PedestrianMeasure
 from app.routing.schedules import ServiceFrequencyIndex
 
 
@@ -134,7 +135,7 @@ async def test_coordinate_route_search_uses_ride_hail_only_as_radius_fallback(
     async def nearby(session: object, **kwargs: object) -> list[NearbyStop]:
         radius = int(kwargs["radius_meters"])
         radii.append(radius)
-        if radius < 8000:
+        if radius < 12000:
             return []
         is_origin = kwargs["purpose"] is NearbyStopPurpose.ORIGIN
         return [
@@ -156,9 +157,22 @@ async def test_coordinate_route_search_uses_ride_hail_only_as_radius_fallback(
     async def schedules(session: object):
         return ServiceFrequencyIndex([])
 
+    class StreetRouterStub:
+        async def measure_distances(
+            self,
+            start: tuple[float, float],
+            targets: list[tuple[float, float]],
+            mode: TransportMode = TransportMode.WALK,
+        ) -> list[PedestrianMeasure]:
+            return [PedestrianMeasure(10, 3500) for _ in targets]
+
+        async def enrich_segments(self, segments: list[Segment]) -> list[Segment]:
+            return segments
+
     monkeypatch.setattr(route_search_router, "find_nearby_stops", nearby)
     monkeypatch.setattr(route_search_router, "get_routing_graph", graph)
     monkeypatch.setattr(route_search_router, "get_schedule_index", schedules)
+    monkeypatch.setattr(route_search_router, "get_pedestrian_router", lambda: StreetRouterStub())
     app.dependency_overrides[get_session] = fake_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -176,7 +190,7 @@ async def test_coordinate_route_search_uses_ride_hail_only_as_radius_fallback(
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert radii == [1500, 8000, 1500, 8000]
+    assert radii == [750, 12000, 750, 12000]
     assert [segment["mode"] for segment in response.json()["options"][0]["segments"]] == [
         "ride_hail",
         "transjakarta",

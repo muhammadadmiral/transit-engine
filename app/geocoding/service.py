@@ -88,6 +88,32 @@ class GeocodingService:
         self._put_cached(cache_key, result)
         return result
 
+    async def describe_nearby(self, lat: float, lng: float) -> PlaceResult:
+        """Prefer a nearby named POI, then fall back to the road/address."""
+        cache_key = f"nearby:{lat:.5f}:{lng:.5f}"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+        candidates: list[PlaceResult] = []
+        if self.settings.effective_tomtom_api_key:
+            try:
+                candidates.extend(await self._nearby_tomtom(lat, lng, 150, 5))
+            except (httpx.HTTPError, ValueError, TypeError):
+                pass
+            if not candidates:
+                reverse = await self._reverse_tomtom(lat, lng)
+                if reverse is not None:
+                    candidates.append(reverse)
+        if not candidates:
+            reverse = await self._reverse_photon(lat, lng)
+            if reverse is not None:
+                candidates.append(reverse)
+        if not candidates:
+            raise PlaceNotFoundError
+        result = candidates[0]
+        self._put_cached(cache_key, result)
+        return result
+
     async def _search_nominatim(self, query: str, limit: int) -> list[PlaceResult]:
         payload = await self._nominatim_request(
             "/search",
@@ -182,6 +208,23 @@ class GeocodingService:
         rows = payload.get("results", []) if isinstance(payload, dict) else []
         return [_from_tomtom(row) for row in rows if isinstance(row, dict)]
 
+    async def _nearby_tomtom(
+        self, lat: float, lng: float, radius: int, limit: int
+    ) -> list[PlaceResult]:
+        payload = await self._tomtom_request(
+            "/nearbySearch/.json",
+            {
+                "countrySet": "ID",
+                "lat": str(lat),
+                "limit": str(limit),
+                "lon": str(lng),
+                "radius": str(radius),
+                "language": "id-ID",
+            },
+        )
+        rows = payload.get("results", []) if isinstance(payload, dict) else []
+        return [_from_tomtom(row) for row in rows if isinstance(row, dict)]
+
     async def _reverse_tomtom(self, lat: float, lng: float) -> PlaceResult | None:
         payload = await self._tomtom_request(
             f"/reverseGeocode/{lat},{lng}.json",
@@ -270,9 +313,7 @@ def _from_tomtom(row: dict[str, Any], *, reverse: bool = False) -> PlaceResult:
         poi.get("classifications") if isinstance(poi.get("classifications"), list) else []
     )
     classification = (
-        classifications[0]
-        if classifications and isinstance(classifications[0], dict)
-        else {}
+        classifications[0] if classifications and isinstance(classifications[0], dict) else {}
     )
     names = classification.get("names") if isinstance(classification.get("names"), list) else []
     category = str(
@@ -282,10 +323,7 @@ def _from_tomtom(row: dict[str, Any], *, reverse: bool = False) -> PlaceResult:
         or "address"
     )
     label = str(
-        poi.get("name")
-        or address.get("freeformAddress")
-        or address.get("streetName")
-        or "Lokasi"
+        poi.get("name") or address.get("freeformAddress") or address.get("streetName") or "Lokasi"
     )
     subtitle = str(address.get("freeformAddress") or label)
     result_type = "reverse" if reverse else str(row.get("type") or "place")

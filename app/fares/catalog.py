@@ -2,6 +2,7 @@
 
 from app.fares.engine import (
     DistanceBandFareRule,
+    DistanceRangeFareRule,
     EstimatedRangeFareRule,
     FareCatalog,
     FlatFareRule,
@@ -62,11 +63,14 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             max_amount=7000,
             source_url=None,
         ),
-        EstimatedRangeFareRule(
+        DistanceRangeFareRule(
             product_id="ride-hail:estimate",
-            estimated_amount=15000,
-            min_amount=10000,
-            max_amount=30000,
+            base_amount=10000,
+            per_km_amount=2500,
+            min_base_amount=8000,
+            min_per_km_amount=2000,
+            max_base_amount=13000,
+            max_per_km_amount=3500,
             source_url=None,
         ),
     ]

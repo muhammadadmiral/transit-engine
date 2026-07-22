@@ -23,11 +23,18 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
                 "trafficUpdatedAt": (
                     segment.traffic_updated_at.isoformat() if segment.traffic_updated_at else None
                 ),
+                "weatherFactor": segment.weather_factor,
+                "weatherSource": (segment.weather_source.value if segment.weather_source else None),
+                "weatherUpdatedAt": (
+                    segment.weather_updated_at.isoformat() if segment.weather_updated_at else None
+                ),
+                "precipitationMm": segment.precipitation_mm,
                 "fare": segment.fare,
                 "fareProductId": segment.fare_product_id,
                 "dataConfidence": segment.data_confidence.value,
                 "lastVerifiedAt": segment.last_verified_at.isoformat(),
                 "walkingDistanceMeters": segment.walking_distance_meters,
+                "distanceMeters": segment.distance_meters,
                 "walkingRouteSource": (
                     segment.walking_route_source.value if segment.walking_route_source else None
                 ),
