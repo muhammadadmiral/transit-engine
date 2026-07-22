@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -190,9 +189,7 @@ async def test_concurrency_is_bounded_by_semaphore() -> None:
     client = httpx.AsyncClient(transport=transport)
     router = PedestrianRouter(base_url="http://valhalla", client=client, max_concurrency=2)
 
-    segments = [
-        _walk_segment(start=(106.8 + 0.0001 * i, -6.2 - 0.0001 * i)) for i in range(6)
-    ]
+    segments = [_walk_segment(start=(106.8 + 0.0001 * i, -6.2 - 0.0001 * i)) for i in range(6)]
     await router.enrich_segments(segments)
     assert peak <= 2
 
@@ -207,6 +204,9 @@ def test_get_pedestrian_router_is_cached() -> None:
 def test_invalidate_pedestrian_cache_clears_singleton() -> None:
     pedestrian.get_pedestrian_router.cache_clear()
     router = get_pedestrian_router()
-    router._cache[((0.0, 0.0), (0.0, 0.0))] = (0.0, pedestrian.PedestrianRoute([(0.0, 0.0), (1.0, 1.0)], 1.0, 1.0))
+    router._cache[((0.0, 0.0), (0.0, 0.0))] = (
+        0.0,
+        pedestrian.PedestrianRoute([(0.0, 0.0), (1.0, 1.0)], 1.0, 1.0),
+    )
     pedestrian.invalidate_pedestrian_cache()
     assert router._cache == {}

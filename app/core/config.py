@@ -21,6 +21,17 @@ class Settings(BaseSettings):
     pedestrian_router_cache_ttl_seconds: int = 900
     pedestrian_router_cache_max_entries: int = 512
     pedestrian_router_max_distance_meters: int = 5000
+    geocoder_nominatim_url: str = "https://nominatim.openstreetmap.org"
+    geocoder_photon_url: str = "https://photon.komoot.io"
+    geocoder_user_agent: str = "TransHub-Jabodetabek/0.1"
+    geocoder_timeout_seconds: float = 8.0
+    geocoder_nominatim_interval_seconds: float = 1.0
+    tomtom_traffic_api_key: SecretStr = SecretStr("")
+    tomtom_traffic_url: str = (
+        "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
+    )
+    traffic_timeout_seconds: float = 2.5
+    traffic_cache_ttl_seconds: int = 300
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

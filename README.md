@@ -1,6 +1,6 @@
 # Transit Engine
 
-Routing backend untuk **TransHub Jabodetabek**, sebuah perencana perjalanan transportasi publik multimoda. Transit Engine menyatukan jaringan KRL, MRT, LRT, TransJakarta, angkot, dan layanan pengumpan lain ke dalam satu graph agar pengguna dapat membandingkan perjalanan tercepat dan termurah.
+Routing backend untuk **TransHub Jabodetabek**, sebuah perencana perjalanan transportasi publik multimoda. Transit Engine menyatukan jaringan KRL, MRT, LRT, TransJakarta, Mikrotrans, angkot, dan layanan pengumpan lain ke dalam satu graph agar pengguna dapat membandingkan perjalanan tercepat dan termurah.
 
 ## Yang dikerjakan
 
@@ -15,14 +15,16 @@ Routing backend untuk **TransHub Jabodetabek**, sebuah perencana perjalanan tran
 | Moda | Sumber data saat ini | Status tarif |
 | --- | --- | --- |
 | TransJakarta | GTFS operator | Exact, flat |
+| Mikrotrans | GTFS operator, dipisahkan dari bus TransJakarta | Gratis |
 | MRT Jakarta | Dataset jaringan dan matriks tarif terkurasi | Exact, origin–destination |
 | LRT Jakarta | Dataset jaringan terkurasi | Exact, flat |
 | LRT Jabodebek | Dataset jaringan terkurasi | Estimasi berbasis jarak dan waktu |
 | KRL Jabodetabek | Topologi dan geometri jaringan terkurasi | Estimasi band jarak |
-| Angkot | OpenStreetMap yang disaring dan diaudit | Rentang estimasi |
+| Angkot | GIS resmi Kabupaten Bogor, regulasi Depok, dan OSM terverifikasi | Rentang estimasi |
 | Bikun UI | Dataset kampus terkurasi | Gratis |
+| Ojek online fallback | Koneksi terakhir saat tidak ada transit dalam radius jalan kaki | Rentang estimasi, bukan quote operator |
 
-Data angkot bersifat parsial dan dapat berubah di lapangan. Segmennya selalu diberi label `community`; harga tidak dipresentasikan sebagai angka pasti.
+Angkot dimodelkan sebagai koridor *hail-and-ride*, bukan halte fiktif. Titik naik/turun diproyeksikan ke koridor pada runtime sehingga pengguna dapat naik atau turun di bagian jalan yang dilalui. Setiap koridor tetap membawa label `official` atau `community`; harga tidak dipresentasikan sebagai angka pasti.
 
 ## Arsitektur
 
@@ -53,13 +55,13 @@ Docker Compose juga tersedia untuk menjalankan API dan PostGIS secara lokal. Sem
 ## Dokumentasi
 
 - [Product blueprint](./blueprint.md)
-- [Frontend integration & design guide](./FRONTEND_GUIDE.md)
+- [Data sources and refresh](./docs/DATA_SOURCES.md)
 - [Deployment architecture](./DEPLOYMENT.md)
 - [Database architecture](./SUPABASE.md)
 
 ## Status dan batasan
 
-Proyek ini masih aktif dikembangkan. Durasi perjalanan adalah estimasi dan belum memakai posisi kendaraan real-time. Data komunitas—terutama angkot—dapat tidak lengkap atau berbeda dari kondisi lapangan. TransHub independen dan tidak berafiliasi dengan operator transportasi mana pun.
+Proyek ini masih aktif dikembangkan. Jadwal rel memakai frekuensi resmi; ETA moda jalan memakai TomTom Traffic Flow bila key tersedia dan profil waktu yang diberi label bila tidak. Data komunitas dapat tidak lengkap atau berbeda dari kondisi lapangan. TransHub independen dan tidak berafiliasi dengan operator transportasi mana pun.
 
 ## License
 

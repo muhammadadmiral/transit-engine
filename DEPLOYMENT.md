@@ -30,10 +30,12 @@ Dataset transit dirilis terpisah dari schema aplikasi:
 
 - GTFS TransJakarta dapat diperbarui dari sumber operator;
 - jaringan rail dan Bikun berasal dari snapshot terkurasi dan terversi;
-- angkot diambil dari OpenStreetMap, disaring, lalu mengganti snapshot angkot secara transaksional;
+- angkot resmi Bogor dan Depok disimpan terpisah dari snapshot komunitas OpenStreetMap;
 - setiap data refresh diikuti rebuild konektor transfer dan invalidasi/restart graph cache.
 
 Fetcher yang gagal tidak boleh mengosongkan dataset production. Data baru harus lolos validasi model dan smoke test representatif sebelum dianggap siap.
+
+`TOMTOM_TRAFFIC_API_KEY` bersifat opsional dan hanya disimpan di backend. Tanpa key, respons tetap tersedia dengan `trafficSource=historical_profile`; backend tidak menyebut estimasi tersebut sebagai data aktual.
 
 ## Public deployment
 

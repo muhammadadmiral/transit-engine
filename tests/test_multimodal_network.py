@@ -27,7 +27,8 @@ def test_live_network_layers_and_representative_multimodal_routes() -> None:
 
         angkot_stops = client.get("/network/stops", params={"mode": "angkot", "limit": 1})
         assert angkot_stops.status_code == 200
-        assert angkot_stops.json()["total"] > 0
+        # Angkot is a continuous hail-and-ride corridor, never persisted as fake stops.
+        assert angkot_stops.json()["total"] == 0
 
         nearby = client.get(
             "/stops/nearby",
@@ -106,16 +107,25 @@ def test_live_network_layers_and_representative_multimodal_routes() -> None:
         routes = client.get("/network/routes", params={"mode": "angkot", "limit": 1})
         route_id = routes.json()["items"][0]["id"]
         geometry = client.get(f"/network/routes/{route_id}/geometry").json()
-        first_segment = geometry["features"][0]["properties"]
+        coordinates = geometry["features"][0]["geometry"]["coordinates"]
+        first_lng, first_lat = coordinates[0]
+        last_lng, last_lat = coordinates[-1]
         angkot_route = client.post(
             "/route-search",
             json={
-                "originStopId": first_segment["fromStopId"],
-                "destinationStopId": first_segment["toStopId"],
+                "originLat": first_lat,
+                "originLng": first_lng,
+                "destinationLat": last_lat,
+                "destinationLng": last_lng,
+                "accessRadiusMeters": 500,
                 "maxTransfers": 0,
             },
         )
         assert angkot_route.status_code == 200
+        assert all(
+            any(segment["mode"] == "angkot" for segment in option["segments"])
+            for option in angkot_route.json()["options"]
+        )
         assert all(
             option["fareQuote"]["status"] == "range" for option in angkot_route.json()["options"]
         )

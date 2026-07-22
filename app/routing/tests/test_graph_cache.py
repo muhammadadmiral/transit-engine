@@ -25,7 +25,11 @@ async def test_reuses_graph_until_invalidated(monkeypatch) -> None:
         coordinates=[(106.8, -6.2), (106.81, -6.21)],
     )
     load_segments = AsyncMock(return_value=[segment])
+    load_flexible_routes = AsyncMock(return_value=[])
+    load_all_stops = AsyncMock(return_value=[])
     monkeypatch.setattr(graph_cache, "load_segments", load_segments)
+    monkeypatch.setattr(graph_cache, "load_flexible_routes", load_flexible_routes)
+    monkeypatch.setattr(graph_cache, "load_all_stops", load_all_stops)
     graph_cache.invalidate_graph_cache()
 
     first = await graph_cache.get_routing_graph(object())
@@ -33,6 +37,7 @@ async def test_reuses_graph_until_invalidated(monkeypatch) -> None:
 
     assert first is second
     assert load_segments.await_count == 1
+    assert load_flexible_routes.await_count == 1
 
     graph_cache.invalidate_graph_cache()
     await graph_cache.get_routing_graph(object())

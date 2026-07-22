@@ -10,6 +10,7 @@ from app.db.session import get_session
 from app.db.transit_repository import (
     list_network_stops,
     list_route_overviews,
+    load_flexible_route_segment,
     load_route_segments,
 )
 from app.models.schema import (
@@ -67,6 +68,9 @@ async def route_geometry(
 ) -> FeatureCollection:
     try:
         segments = await load_route_segments(session, route_id)
+        if not segments:
+            flexible_segment = await load_flexible_route_segment(session, route_id)
+            segments = [flexible_segment] if flexible_segment else []
     except (OSError, SQLAlchemyError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

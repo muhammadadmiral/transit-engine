@@ -5,16 +5,21 @@ from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import SegmentRecord, StopRecord
+from app.db.models import (
+    FlexibleRouteRecord,
+    SegmentRecord,
+    ServiceFrequencyRecord,
+    StopRecord,
+)
 from app.ingestion.gtfs.transjakarta import TransitDataset
-from app.models.schema import Segment
+from app.models.schema import FlexibleRoute, Segment, ServiceFrequency
 
 WRITE_BATCH_SIZE = 500
 
 
 async def replace_transjakarta_dataset(session: AsyncSession, dataset: TransitDataset) -> None:
-    """Atomically replace official TransJakarta stops and directed segments."""
-    await replace_dataset(session, dataset, {"transjakarta"})
+    """Atomically replace official bus and separately classified Mikrotrans data."""
+    await replace_dataset(session, dataset, {"transjakarta", "jaklingko"})
 
 
 async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes: set[str]) -> None:
@@ -47,9 +52,120 @@ async def replace_dataset(session: AsyncSession, dataset: TransitDataset, modes:
     await insert_segments(session, dataset.segments)
 
 
+async def replace_dataset_by_prefix(
+    session: AsyncSession,
+    dataset: TransitDataset,
+    *,
+    segment_route_prefix: str,
+    stop_id_prefix: str,
+) -> None:
+    """Replace one namespaced layer while preserving other data of the same mode."""
+    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "walk"))
+    await session.execute(
+        delete(SegmentRecord).where(SegmentRecord.route_id.startswith(segment_route_prefix))
+    )
+    await session.execute(delete(StopRecord).where(StopRecord.id.startswith(stop_id_prefix)))
+
+    stop_rows = [
+        {
+            "id": stop.id,
+            "name": stop.name,
+            "mode": stop.modes[0].value,
+            "location": WKTElement(f"POINT({stop.lng} {stop.lat})", srid=4326),
+        }
+        for stop in dataset.stops
+    ]
+    for batch in _batches(stop_rows):
+        stmt = insert(StopRecord).values(batch)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "name": stmt.excluded.name,
+                "mode": stmt.excluded.mode,
+                "location": stmt.excluded.location,
+            },
+        )
+        await session.execute(stmt)
+    await insert_segments(session, dataset.segments)
+
+
 async def replace_transfer_segments(session: AsyncSession, segments: list[Segment]) -> None:
     await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "walk"))
     await insert_segments(session, segments)
+
+
+async def replace_flexible_routes(
+    session: AsyncSession,
+    routes: list[FlexibleRoute],
+    *,
+    route_id_prefix: str,
+) -> None:
+    """Replace one corridor namespace and remove obsolete angkot pseudo-stops."""
+    await session.execute(
+        delete(FlexibleRouteRecord).where(FlexibleRouteRecord.id.startswith(route_id_prefix))
+    )
+    rows = [
+        {
+            "id": route.id,
+            "route_code": route.route_code,
+            "route_name": route.route_name,
+            "mode": route.mode.value,
+            "service_category": route.service_category.value,
+            "service_name": route.service_name,
+            "avg_speed_kmh": route.avg_speed_kmh,
+            "fare": route.fare,
+            "fare_product_id": route.fare_product_id,
+            "data_confidence": route.data_confidence.value,
+            "last_verified_at": route.last_verified_at,
+            "color": route.color,
+            "geometry": WKTElement(
+                "LINESTRING(" + ", ".join(f"{lng} {lat}" for lng, lat in route.coordinates) + ")",
+                srid=4326,
+            ),
+            "source_url": route.source_url,
+        }
+        for route in routes
+    ]
+    for batch in _batches(rows):
+        stmt = insert(FlexibleRouteRecord).values(batch)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={column: getattr(stmt.excluded, column) for column in rows[0] if column != "id"},
+        )
+        await session.execute(stmt)
+
+
+async def delete_legacy_angkot_graph(session: AsyncSession) -> None:
+    """Delete persisted pseudo-stops only after corridor rows are safely staged."""
+    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "walk"))
+    await session.execute(delete(SegmentRecord).where(SegmentRecord.mode == "angkot"))
+    await session.execute(delete(StopRecord).where(StopRecord.mode == "angkot"))
+
+
+async def replace_service_frequencies(
+    session: AsyncSession, frequencies: list[ServiceFrequency]
+) -> None:
+    modes = {frequency.mode.value for frequency in frequencies}
+    if modes:
+        await session.execute(
+            delete(ServiceFrequencyRecord).where(ServiceFrequencyRecord.mode.in_(modes))
+        )
+    rows = [
+        {
+            "id": frequency.id,
+            "route_id": frequency.route_id,
+            "mode": frequency.mode.value,
+            "day_type": frequency.day_type,
+            "start_minute": frequency.start_minute,
+            "end_minute": frequency.end_minute,
+            "headway_min": frequency.headway_min,
+            "source_url": frequency.source_url,
+            "last_verified_at": frequency.last_verified_at,
+        }
+        for frequency in frequencies
+    ]
+    for batch in _batches(rows):
+        await session.execute(insert(ServiceFrequencyRecord).values(batch))
 
 
 async def insert_segments(session: AsyncSession, segments: list[Segment]) -> None:

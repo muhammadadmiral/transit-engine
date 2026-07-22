@@ -19,6 +19,11 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             source_url="https://transjakarta.co.id/",
         ),
         FlatFareRule(
+            product_id="jaklingko:mikrotrans",
+            amount=0,
+            source_url="https://www.jakarta.go.id/jaklingko",
+        ),
+        FlatFareRule(
             product_id="lrt-jakarta:regular",
             amount=5000,
             source_url="https://www.lrtjakarta.co.id/faq.html?action=FAQ.list&page=3",
@@ -55,6 +60,13 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             estimated_amount=5000,
             min_amount=4000,
             max_amount=7000,
+            source_url=None,
+        ),
+        EstimatedRangeFareRule(
+            product_id="ride-hail:estimate",
+            estimated_amount=15000,
+            min_amount=10000,
+            max_amount=30000,
             source_url=None,
         ),
     ]
