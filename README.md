@@ -22,6 +22,7 @@ Routing backend untuk **TransHub Jabodetabek**, sebuah perencana perjalanan tran
 | KRL Jabodetabek | Topologi dan geometri jaringan terkurasi | Estimasi band jarak |
 | Angkot | GIS resmi Kabupaten Bogor, regulasi Depok, dan OSM terverifikasi | Rentang estimasi |
 | Bikun UI | Dataset kampus terkurasi | Gratis |
+| Ojek online fallback | Koneksi terakhir saat tidak ada transit dalam radius jalan kaki | Rentang estimasi, bukan quote operator |
 
 Angkot dimodelkan sebagai koridor *hail-and-ride*, bukan halte fiktif. Titik naik/turun diproyeksikan ke koridor pada runtime sehingga pengguna dapat naik atau turun di bagian jalan yang dilalui. Setiap koridor tetap membawa label `official` atau `community`; harga tidak dipresentasikan sebagai angka pasti.
 

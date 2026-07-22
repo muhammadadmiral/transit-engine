@@ -38,6 +38,7 @@ class TransportMode(StrEnum):
     ANGKOT = "angkot"
     BIKUN = "bikun"
     WALK = "walk"
+    RIDE_HAIL = "ride_hail"
 
 
 class DataConfidence(StrEnum):
@@ -253,6 +254,8 @@ class RouteSearchRequest(SchemaModel):
     destination_lat: Annotated[float | None, Field(default=None, ge=-90, le=90)]
     destination_lng: Annotated[float | None, Field(default=None, ge=-180, le=180)]
     access_radius_meters: Annotated[int, Field(ge=100, le=5000)] = 1500
+    allow_ride_hail: bool = True
+    ride_hail_radius_meters: Annotated[int, Field(ge=1000, le=15000)] = 8000
     max_transfers: Annotated[int, Field(ge=0, le=5)] = 5
     departure_at: datetime | None = None
     payment_profile: PaymentProfile = PaymentProfile.STANDARD

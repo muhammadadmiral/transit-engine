@@ -123,3 +123,63 @@ async def test_route_search_rejects_mixed_stop_and_coordinate_endpoint() -> None
         )
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_coordinate_route_search_uses_ride_hail_only_as_radius_fallback(
+    monkeypatch,
+) -> None:
+    radii: list[int] = []
+
+    async def nearby(session: object, **kwargs: object) -> list[NearbyStop]:
+        radius = int(kwargs["radius_meters"])
+        radii.append(radius)
+        if radius < 8000:
+            return []
+        is_origin = kwargs["purpose"] is NearbyStopPurpose.ORIGIN
+        return [
+            NearbyStop(
+                id="origin-stop" if is_origin else "destination-stop",
+                name="Origin" if is_origin else "Destination",
+                lat=-6.3 if is_origin else -6.32,
+                lng=106.8 if is_origin else 106.82,
+                modes=[TransportMode.TRANSJAKARTA],
+                distance_meters=3500,
+                can_board=is_origin,
+                can_alight=not is_origin,
+            )
+        ]
+
+    async def graph(session: object):
+        return build_graph([ride_segment()])
+
+    async def schedules(session: object):
+        return ServiceFrequencyIndex([])
+
+    monkeypatch.setattr(route_search_router, "find_nearby_stops", nearby)
+    monkeypatch.setattr(route_search_router, "get_routing_graph", graph)
+    monkeypatch.setattr(route_search_router, "get_schedule_index", schedules)
+    app.dependency_overrides[get_session] = fake_session
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/route-search",
+                json={
+                    "originLat": -6.27,
+                    "originLng": 106.77,
+                    "destinationLat": -6.35,
+                    "destinationLng": 106.85,
+                    "maxTransfers": 3,
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert radii == [1500, 8000, 1500, 8000]
+    assert [segment["mode"] for segment in response.json()["options"][0]["segments"]] == [
+        "ride_hail",
+        "transjakarta",
+        "ride_hail",
+    ]
+    assert response.json()["options"][0]["fareQuote"]["status"] == "range"

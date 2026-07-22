@@ -62,5 +62,12 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             max_amount=7000,
             source_url=None,
         ),
+        EstimatedRangeFareRule(
+            product_id="ride-hail:estimate",
+            estimated_amount=15000,
+            min_amount=10000,
+            max_amount=30000,
+            source_url=None,
+        ),
     ]
 )

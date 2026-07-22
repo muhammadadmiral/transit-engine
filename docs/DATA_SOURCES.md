@@ -15,6 +15,7 @@ The backend is the only owner of geocoding, transit data, schedules, fares, and 
 | Geocoding | Nominatim plus Photon | External/community |
 | Current road traffic | TomTom Flow Segment Data when configured | External/live |
 | Road ETA fallback | Jakarta day/time profile | Estimated |
+| Ojek online fallback | Nearest transit connector only; no operator API | Estimated |
 
 Official and community corridors are stored in separate namespaces. A failed community refresh never deletes the official layers.
 
@@ -40,3 +41,5 @@ Run the official layers before the OSM layer. Imports are namespaced and transac
 ## Known source boundary
 
 No single open, machine-readable authority currently publishes street-level geometry for every conventional angkot in all Jabodetabek municipalities. The engine therefore exposes source and confidence instead of fabricating certainty. Bogor has the strongest official geometry coverage; Bekasi, Tangerang, and some Depok corridors still depend on reviewed OSM relations. Missing tracks should be added only from an attributable route publication or a reviewed field trace.
+
+There is no public Gojek booking/fare API in this project. When no usable transit is found inside the walking radius, the API may offer a generic `ride_hail` connector up to the configured radius. Its time and fare are explicitly estimates; it neither checks vehicle availability nor books a trip.

@@ -16,6 +16,7 @@ ROAD_MODES = {
     TransportMode.ANGKOT,
     TransportMode.TRANSJAKARTA,
     TransportMode.JAKLINGKO,
+    TransportMode.RIDE_HAIL,
 }
 TOMTOM_SOURCE_URL = (
     "https://developer.tomtom.com/traffic-api/documentation/"
@@ -40,7 +41,9 @@ def historical_traffic_factor(segment: Segment, departure_at: datetime | None) -
         return 1.24 if peak else 1.1 if shoulder or weekend_busy else 1.0
     if segment.mode is TransportMode.JAKLINGKO:
         return 1.35 if peak else 1.14 if shoulder or weekend_busy else 1.0
-    return 1.4 if peak else 1.16 if shoulder or weekend_busy else 1.0
+    if segment.mode is TransportMode.ANGKOT:
+        return 1.4 if peak else 1.16 if shoulder or weekend_busy else 1.0
+    return 1.32 if peak else 1.12 if shoulder or weekend_busy else 1.0
 
 
 class RoadTrafficEstimator:

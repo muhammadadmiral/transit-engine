@@ -182,6 +182,29 @@ async def _resolve_endpoint(
         [*fixed_candidates, *flexible_candidates],
         key=lambda candidate: candidate.distance_meters,
     )[:80]
+    use_ride_hail = False
+    if not candidates and request.allow_ride_hail:
+        fixed_candidates = await find_nearby_stops(
+            session,
+            lat=lat,
+            lng=lng,
+            radius_meters=request.ride_hail_radius_meters,
+            limit=96,
+            mode=None,
+            purpose=purpose,
+        )
+        flexible_candidates = nearby_flexible_nodes(
+            graph,
+            lat=lat,
+            lng=lng,
+            radius_meters=request.ride_hail_radius_meters,
+            can_board=is_origin,
+        )
+        candidates = sorted(
+            [*fixed_candidates, *flexible_candidates],
+            key=lambda candidate: candidate.distance_meters,
+        )[:80]
+        use_ride_hail = bool(candidates)
     if not candidates:
         action = "boardable" if is_origin else "alightable"
         raise HTTPException(
@@ -200,6 +223,7 @@ async def _resolve_endpoint(
             pin_lng=lng,
             stop=stop,
             is_origin=is_origin,
+            use_ride_hail=use_ride_hail,
         )
         for stop in candidates
     ]
@@ -212,6 +236,7 @@ def _access_segment(
     pin_lng: float,
     stop: NearbyStop,
     is_origin: bool,
+    use_ride_hail: bool = False,
 ) -> Segment:
     from_stop_id, to_stop_id = (virtual_id, stop.id) if is_origin else (stop.id, virtual_id)
     coordinates = (
@@ -220,19 +245,27 @@ def _access_segment(
         else [(stop.lng, stop.lat), (pin_lng, pin_lat)]
     )
     direction = "to transit" if is_origin else "to destination"
+    mode = TransportMode.RIDE_HAIL if use_ride_hail else TransportMode.WALK
+    route_code = "OJEK" if use_ride_hail else "WALK"
+    route_name = f"Ojek online {direction} (estimasi)" if use_ride_hail else f"Walk {direction}"
+    duration = (
+        max(3.0, stop.distance_meters / (25_000 / 60))
+        if use_ride_hail
+        else max(0.5, stop.distance_meters / 75)
+    )
     return Segment(
         id=f"access:{'origin' if is_origin else 'destination'}:{stop.id}",
         route_id=f"access:{'origin' if is_origin else 'destination'}",
-        route_code="WALK",
-        route_name=f"Walk {direction}",
+        route_code=route_code,
+        route_name=route_name,
         from_stop_id=from_stop_id,
         to_stop_id=to_stop_id,
-        mode=TransportMode.WALK,
+        mode=mode,
         service_category=ServiceCategory.TRANSFER,
-        service_name=f"Walk {direction}",
-        avg_duration_min=round(max(0.5, stop.distance_meters / 75), 1),
-        fare=0,
-        fare_product_id="free:walk",
+        service_name=route_name,
+        avg_duration_min=round(duration, 1),
+        fare=15000 if use_ride_hail else 0,
+        fare_product_id="ride-hail:estimate" if use_ride_hail else "free:walk",
         data_confidence=DataConfidence.COMMUNITY,
         last_verified_at=date.today(),
         color="64748B",
