@@ -1,26 +1,25 @@
 """In-memory graph adapter for continuous hail-and-ride route corridors."""
 
 from collections import defaultdict
-from datetime import date
 from math import asin, cos, floor, radians, sin, sqrt
 
 import networkx as nx
 
 from app.models.schema import (
-    DataConfidence,
     FlexibleRoute,
     NearbyStop,
     Segment,
-    ServiceCategory,
     Stop,
     TransportMode,
 )
+from app.routing.transfers import add_walking_pair
 
 SAMPLE_INTERVAL_METERS = 180.0
 FIXED_TRANSFER_RADIUS_METERS = 250.0
 RAIL_TRANSFER_RADIUS_METERS = 600.0
 FLEX_TRANSFER_RADIUS_METERS = 120.0
 GRID_DEGREES = 0.0025
+TRANSFER_GRID_DEGREES = 0.01
 
 
 def materialize_flexible_segments(routes: list[FlexibleRoute]) -> list[Segment]:
@@ -78,6 +77,7 @@ def add_flexible_transfers(graph: nx.MultiDiGraph, fixed_stops: list[Stop]) -> N
     ]
     for node_id, data in flex_nodes:
         lat, lng = float(data["lat"]), float(data["lng"])
+        nearest_by_mode: dict[TransportMode, tuple[float, Stop]] = {}
         for stop in _nearby_grid(fixed_grid, lat, lng, cell_radius=3):
             distance = distance_meters(lat, lng, stop.lat, stop.lng)
             transfer_radius = (
@@ -85,20 +85,29 @@ def add_flexible_transfers(graph: nx.MultiDiGraph, fixed_stops: list[Stop]) -> N
                 if stop.modes[0] in {TransportMode.KRL, TransportMode.MRT, TransportMode.LRT}
                 else FIXED_TRANSFER_RADIUS_METERS
             )
-            if distance <= transfer_radius:
-                _add_walking_pair(
-                    graph,
-                    node_id,
-                    stop.id,
-                    (lat, lng),
-                    (stop.lat, stop.lng),
-                    f"flex-fixed:{node_id}:{stop.id}",
-                )
+            if distance > transfer_radius:
+                continue
+            mode = stop.modes[0]
+            current = nearest_by_mode.get(mode)
+            if current is None or distance < current[0]:
+                nearest_by_mode[mode] = (distance, stop)
+        for _, stop in nearest_by_mode.values():
+            add_walking_pair(
+                graph,
+                node_id,
+                stop.id,
+                (lat, lng),
+                (stop.lat, stop.lng),
+                f"flex-fixed:{node_id}:{stop.id}",
+            )
 
     flex_grid: dict[tuple[int, int], list[tuple[str, dict[str, object]]]] = defaultdict(list)
     for item in flex_nodes:
         flex_grid[_cell(float(item[1]["lat"]), float(item[1]["lng"]))].append(item)
-    seen: set[tuple[str, str]] = set()
+    best_by_route_pair_cell: dict[
+        tuple[str, str, int, int],
+        tuple[float, str, dict[str, object], str, dict[str, object]],
+    ] = {}
     for node_id, data in flex_nodes:
         lat, lng = float(data["lat"]), float(data["lng"])
         nearest_by_route: dict[str, tuple[float, str, dict[str, object]]] = {}
@@ -112,19 +121,30 @@ def add_flexible_transfers(graph: nx.MultiDiGraph, fixed_stops: list[Stop]) -> N
                 continue
             if other_route not in nearest_by_route or distance < nearest_by_route[other_route][0]:
                 nearest_by_route[other_route] = (distance, other_id, other)
-        for _, other_id, other in nearest_by_route.values():
-            pair = tuple(sorted((node_id, other_id)))
-            if pair in seen:
-                continue
-            seen.add(pair)
-            _add_walking_pair(
-                graph,
-                node_id,
-                other_id,
-                (lat, lng),
-                (float(other["lat"]), float(other["lng"])),
-                f"flex-flex:{pair[0]}:{pair[1]}",
-            )
+        for distance, other_id, other in nearest_by_route.values():
+            other_route = str(other["flexible_route_id"])
+            route_pair = tuple(sorted((own_route, other_route)))
+            other_lat, other_lng = float(other["lat"]), float(other["lng"])
+            cell = _transfer_cell((lat + other_lat) / 2, (lng + other_lng) / 2)
+            key = (route_pair[0], route_pair[1], cell[0], cell[1])
+            current = best_by_route_pair_cell.get(key)
+            if current is None or distance < current[0]:
+                best_by_route_pair_cell[key] = (distance, node_id, data, other_id, other)
+
+    seen_node_pairs: set[tuple[str, str]] = set()
+    for _, first_id, first, second_id, second in best_by_route_pair_cell.values():
+        node_pair = tuple(sorted((first_id, second_id)))
+        if node_pair in seen_node_pairs:
+            continue
+        seen_node_pairs.add(node_pair)
+        add_walking_pair(
+            graph,
+            first_id,
+            second_id,
+            (float(first["lat"]), float(first["lng"])),
+            (float(second["lat"]), float(second["lng"])),
+            f"flex-flex:{node_pair[0]}:{node_pair[1]}",
+        )
 
 
 def nearby_flexible_nodes(
@@ -206,51 +226,12 @@ def _resample(
     return result
 
 
-def _add_walking_pair(
-    graph: nx.MultiDiGraph,
-    first_id: str,
-    second_id: str,
-    first: tuple[float, float],
-    second: tuple[float, float],
-    identity: str,
-) -> None:
-    distance = distance_meters(first[0], first[1], second[0], second[1])
-    duration = max(1.0, distance / 75 + 1)
-    first_name = str(graph.nodes[first_id].get("name") or "Titik perpindahan")
-    second_name = str(graph.nodes[second_id].get("name") or "Titik perpindahan")
-    for suffix, from_id, to_id, from_point, to_point in (
-        ("a", first_id, second_id, first, second),
-        ("b", second_id, first_id, second, first),
-    ):
-        segment = Segment(
-            id=f"{identity}:{suffix}",
-            route_id=identity,
-            route_code="WALK",
-            route_name="Walk to/from flexible corridor",
-            from_stop_id=from_id,
-            to_stop_id=to_id,
-            mode=TransportMode.WALK,
-            service_category=ServiceCategory.TRANSFER,
-            service_name="Walking transfer",
-            avg_duration_min=duration,
-            fare=0,
-            fare_product_id="free:walk",
-            data_confidence=DataConfidence.COMMUNITY,
-            last_verified_at=date.today(),
-            color="64748B",
-            coordinates=[(from_point[1], from_point[0]), (to_point[1], to_point[0])],
-            from_stop_name=first_name if from_id == first_id else second_name,
-            to_stop_name=second_name if to_id == second_id else first_name,
-            from_stop_lat=from_point[0],
-            from_stop_lng=from_point[1],
-            to_stop_lat=to_point[0],
-            to_stop_lng=to_point[1],
-        )
-        graph.add_edge(from_id, to_id, key=segment.id, segment=segment)
-
-
 def _cell(lat: float, lng: float) -> tuple[int, int]:
     return floor(lat / GRID_DEGREES), floor(lng / GRID_DEGREES)
+
+
+def _transfer_cell(lat: float, lng: float) -> tuple[int, int]:
+    return floor(lat / TRANSFER_GRID_DEGREES), floor(lng / TRANSFER_GRID_DEGREES)
 
 
 def _nearby_grid(grid: dict, lat: float, lng: float, *, cell_radius: int):

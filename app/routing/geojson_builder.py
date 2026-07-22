@@ -18,6 +18,11 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
                 "avgDurationMin": segment.avg_duration_min,
                 "scheduledWaitMin": segment.scheduled_wait_min,
                 "scheduleSourceUrl": segment.schedule_source_url,
+                "trafficFactor": segment.traffic_factor,
+                "trafficSource": segment.traffic_source.value if segment.traffic_source else None,
+                "trafficUpdatedAt": (
+                    segment.traffic_updated_at.isoformat() if segment.traffic_updated_at else None
+                ),
                 "fare": segment.fare,
                 "fareProductId": segment.fare_product_id,
                 "dataConfidence": segment.data_confidence.value,

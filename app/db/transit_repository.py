@@ -26,13 +26,16 @@ from app.models.schema import (
 )
 
 
-async def load_segments(session: AsyncSession) -> list[Segment]:
-    result = await session.execute(
-        select(
-            SegmentRecord,
-            func.ST_AsGeoJSON(SegmentRecord.geometry).label("geometry_json"),
-        )
+async def load_segments(
+    session: AsyncSession, *, include_walk: bool = True
+) -> list[Segment]:
+    statement = select(
+        SegmentRecord,
+        func.ST_AsGeoJSON(SegmentRecord.geometry).label("geometry_json"),
     )
+    if not include_walk:
+        statement = statement.where(SegmentRecord.mode != TransportMode.WALK.value)
+    result = await session.execute(statement)
     return [segment_from_record(record, geometry_json) for record, geometry_json in result.tuples()]
 
 

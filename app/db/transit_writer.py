@@ -1,7 +1,7 @@
 """Persistence operations for normalized transit datasets."""
 
 from geoalchemy2.elements import WKTElement
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,6 +133,23 @@ async def replace_flexible_routes(
             set_={column: getattr(stmt.excluded, column) for column in rows[0] if column != "id"},
         )
         await session.execute(stmt)
+
+
+async def update_flexible_route_geometry(
+    session: AsyncSession,
+    route_id: str,
+    coordinates: list[tuple[float, float]],
+) -> None:
+    """Update one reviewed corridor without replacing any route namespace."""
+    geometry = WKTElement(
+        "LINESTRING(" + ", ".join(f"{lng} {lat}" for lng, lat in coordinates) + ")",
+        srid=4326,
+    )
+    await session.execute(
+        update(FlexibleRouteRecord)
+        .where(FlexibleRouteRecord.id == route_id)
+        .values(geometry=geometry)
+    )
 
 
 async def delete_legacy_angkot_graph(session: AsyncSession) -> None:
