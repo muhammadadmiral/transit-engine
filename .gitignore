@@ -6,6 +6,9 @@
 .venv/
 node_modules/
 docs/
+!docs/
+docs/*
+!docs/DATA_SOURCES.md
 __pycache__/
 .pytest_cache/
 .ruff_cache/

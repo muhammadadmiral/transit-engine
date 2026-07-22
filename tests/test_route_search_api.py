@@ -16,6 +16,7 @@ from app.models.schema import (
 )
 from app.routers import route_search as route_search_router
 from app.routing.graph import build_graph
+from app.routing.schedules import ServiceFrequencyIndex
 
 
 async def fake_session() -> AsyncIterator[object]:
@@ -50,7 +51,7 @@ async def test_coordinate_route_search_chooses_candidates_in_backend(monkeypatch
     async def nearby(session: object, **kwargs: object) -> list[NearbyStop]:
         purpose = kwargs["purpose"]
         assert isinstance(purpose, NearbyStopPurpose)
-        assert kwargs["limit"] == 32
+        assert kwargs["limit"] == 64
         calls.append(purpose)
         is_origin = purpose is NearbyStopPurpose.ORIGIN
         return [
@@ -69,8 +70,12 @@ async def test_coordinate_route_search_chooses_candidates_in_backend(monkeypatch
     async def graph(session: object):
         return build_graph([ride_segment()])
 
+    async def schedules(session: object):
+        return ServiceFrequencyIndex([])
+
     monkeypatch.setattr(route_search_router, "find_nearby_stops", nearby)
     monkeypatch.setattr(route_search_router, "get_routing_graph", graph)
+    monkeypatch.setattr(route_search_router, "get_schedule_index", schedules)
     app.dependency_overrides[get_session] = fake_session
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

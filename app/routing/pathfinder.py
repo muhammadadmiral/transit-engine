@@ -1,6 +1,8 @@
 from collections import deque
 from datetime import datetime
-from itertools import pairwise
+from heapq import heappop, heappush
+from itertools import count
+from math import asin, cos, radians, sin, sqrt
 
 import networkx as nx
 
@@ -15,8 +17,10 @@ from app.models.schema import (
     TransportMode,
 )
 from app.routing.geojson_builder import build_feature_collection
+from app.routing.schedules import ServiceFrequencyIndex, apply_scheduled_waits
 from app.routing.stop_directory import StopSummary
-from app.routing.weights import duration_cost, segment_weight, transfer_penalty
+from app.routing.traffic import historical_traffic_factor
+from app.routing.weights import duration_cost, transfer_penalty
 
 
 class RouteNotFoundError(ValueError):
@@ -36,14 +40,9 @@ def find_route_options(
     fare_catalog: FareCatalog = DEFAULT_FARE_CATALOG,
     additional_segments: list[Segment] | None = None,
     stop_directory: "dict[str, StopSummary] | None" = None,
+    schedule_index: ServiceFrequencyIndex | None = None,
 ) -> list[RouteOption]:
-    """Calculate both public objectives while sharing one expanded state graph."""
-    prepared_state_graph = _build_state_graph(
-        graph,
-        origin_stop_id,
-        max_transfers,
-        additional_segments=additional_segments,
-    )
+    """Calculate both public objectives without materializing the expanded graph."""
     options = [
         find_route(
             graph,
@@ -55,7 +54,7 @@ def find_route_options(
             payment_profile,
             fare_catalog,
             additional_segments,
-            prepared_state_graph=prepared_state_graph,
+            schedule_index,
         )
         for criteria in (SearchCriteria.FASTEST, SearchCriteria.CHEAPEST)
     ]
@@ -97,8 +96,7 @@ def find_route(
     payment_profile: PaymentProfile = PaymentProfile.STANDARD,
     fare_catalog: FareCatalog = DEFAULT_FARE_CATALOG,
     additional_segments: list[Segment] | None = None,
-    *,
-    prepared_state_graph: nx.DiGraph | None = None,
+    schedule_index: ServiceFrequencyIndex | None = None,
 ) -> RouteOption:
     extra_segments = additional_segments or []
     extra_nodes = {
@@ -130,13 +128,17 @@ def find_route(
             geojson=build_feature_collection([]),
         )
 
-    state_graph = prepared_state_graph or _build_state_graph(
-        graph, origin_stop_id, max_transfers, additional_segments=extra_segments
+    extra_outgoing: dict[str, list[Segment]] = {}
+    extra_incoming: dict[str, list[Segment]] = {}
+    for segment in extra_segments:
+        extra_outgoing.setdefault(segment.from_stop_id, []).append(segment)
+        extra_incoming.setdefault(segment.to_stop_id, []).append(segment)
+    reachable = _reverse_reachable(graph, destination_stop_id, extra_incoming)
+    if origin_stop_id not in reachable:
+        raise RouteNotFoundError("No route found within max_transfers")
+    destination_coordinates = _node_coordinates(
+        graph, destination_stop_id, extra_incoming.get(destination_stop_id, [])
     )
-    destination_states = [
-        state for state in state_graph if state[0] == destination_stop_id and state[1] is not None
-    ]
-    weight = segment_weight(criteria)
     boarding_costs: dict[str, float] = {}
 
     def boarding_cost(segment: Segment) -> float:
@@ -151,82 +153,81 @@ def find_route(
             boarding_costs[segment.id] = float(amount)
         return boarding_costs[segment.id]
 
-    def state_weight(
-        source: RouteState,
-        __: RouteState,
-        data: dict[str, object],
-    ) -> float:
-        segment = data.get("segment")
-        if segment is None:
-            return 0.0
+    def state_weight(source: RouteState, segment: Segment) -> float:
         changes_vehicle = (
             segment.mode is not TransportMode.WALK
             and source[1] is not None
             and source[1] != segment.route_id
         )
         penalty = transfer_penalty(criteria) if changes_vehicle else 0.0
+        wait = 0.0
+        if segment.mode is not TransportMode.WALK and source[1] != segment.route_id:
+            wait, _ = (
+                schedule_index.expected_wait(segment, departure_at)
+                if schedule_index is not None
+                else (0.0, None)
+            )
         if criteria is SearchCriteria.CHEAPEST:
             previous_product = source[2]
             if previous_product is not None and previous_product == _fare_identity(segment):
                 # Lanjutan produk tarif yang sama: gratis secara tarif, tapi
                 # durasinya tetap dihargai agar rute tidak memutar.
-                return duration_cost(segment) + penalty  # type: ignore[arg-type]
-            return boarding_cost(segment) + duration_cost(segment) + penalty  # type: ignore[arg-type]
-        return weight(segment) + penalty  # type: ignore[arg-type]
+                return (
+                    duration_cost(segment) * historical_traffic_factor(segment, departure_at)
+                    + wait * 50
+                    + penalty
+                )
+            return (
+                boarding_cost(segment)
+                + duration_cost(segment) * historical_traffic_factor(segment, departure_at)
+                + wait * 50
+                + penalty
+            )
+        return (
+            segment.avg_duration_min * historical_traffic_factor(segment, departure_at)
+            + wait
+            + float(segment.fare) * 0.000001
+            + penalty
+        )
+
+    def heuristic(stop_id: str) -> float:
+        if destination_coordinates is None:
+            return 0.0
+        current = _node_coordinates(graph, stop_id, extra_incoming.get(stop_id, []))
+        if current is None:
+            return 0.0
+        # 160 km/h is deliberately above every supported scheduled mode, making
+        # this an admissible lower bound while still guiding long regional searches.
+        minutes = _distance_km(current, destination_coordinates) / 160 * 60
+        return minutes if criteria is SearchCriteria.FASTEST else minutes * 50
 
     source: RouteState = (origin_stop_id, None, None, 0)
-    lengths, paths = nx.single_source_dijkstra(state_graph, source, weight=state_weight)
-    reachable_destinations = [
-        destination for destination in destination_states if destination in lengths
+    queue: list[tuple[float, int, float, RouteState]] = [
+        (heuristic(origin_stop_id), 0, 0.0, source)
     ]
-    if not reachable_destinations:
-        raise RouteNotFoundError("No route found within max_transfers")
-    best_destination = min(reachable_destinations, key=lengths.__getitem__)
-    best_path: list[RouteState] = paths[best_destination]
+    sequence = count(1)
+    distances = {source: 0.0}
+    labels: dict[tuple[str, str | None, str | None], dict[int, float]] = {source[:3]: {0: 0.0}}
+    previous: dict[RouteState, tuple[RouteState, Segment]] = {}
+    best_destination: RouteState | None = None
 
-    segments = _segments_from_state_path(state_graph, best_path)
-    fare_quote = quote_journey(
-        segments,
-        catalog=fare_catalog,
-        departure_at=departure_at,
-        payment_profile=payment_profile,
-    )
-    return RouteOption(
-        criteria=criteria,
-        total_duration_min=sum(segment.avg_duration_min for segment in segments),
-        total_fare=fare_quote.estimated_amount,
-        fare_quote=fare_quote,
-        transfer_count=best_path[-1][3],
-        segments=segments,
-        geojson=build_feature_collection(segments),
-    )
+    while queue:
+        _, _, cost, state = heappop(queue)
+        if cost != distances.get(state):
+            continue
+        stop_id, previous_route_id, previous_product, transfers = state
+        if stop_id == destination_stop_id and previous_route_id is not None:
+            best_destination = state
+            break
 
-
-def _build_state_graph(
-    graph: nx.MultiDiGraph,
-    origin_stop_id: str,
-    max_transfers: int,
-    *,
-    additional_segments: list[Segment] | None = None,
-) -> nx.DiGraph:
-    state_graph = nx.DiGraph()
-    source: RouteState = (origin_stop_id, None, None, 0)
-    state_graph.add_node(source)
-    pending = deque([source])
-    visited = {source}
-    extra_outgoing: dict[str, list[Segment]] = {}
-    for segment in additional_segments or []:
-        extra_outgoing.setdefault(segment.from_stop_id, []).append(segment)
-
-    while pending:
-        from_state = pending.popleft()
-        stop_id, previous_route_id, previous_product, transfers = from_state
         graph_segments = (
-            [edge_data["segment"] for _, _, edge_data in graph.out_edges(stop_id, data=True)]
+            [data["segment"] for _, _, data in graph.out_edges(stop_id, data=True)]
             if stop_id in graph
             else []
         )
         for segment in [*graph_segments, *extra_outgoing.get(stop_id, [])]:
+            if segment.to_stop_id not in reachable:
+                continue
             is_walk = segment.mode is TransportMode.WALK
             next_route_id = previous_route_id if is_walk else segment.route_id
             next_transfers = transfers + int(
@@ -237,23 +238,106 @@ def _build_state_graph(
             if next_transfers > max_transfers:
                 continue
             next_product = previous_product if is_walk else _fare_identity(segment)
-            to_state: RouteState = (
+            next_state: RouteState = (
                 segment.to_stop_id,
                 next_route_id,
                 next_product,
                 next_transfers,
             )
-            state_graph.add_node(to_state)
-            state_graph.add_edge(from_state, to_state, segment=segment)
-            if to_state not in visited:
-                visited.add(to_state)
-                pending.append(to_state)
-    return state_graph
+            next_cost = cost + state_weight(state, segment)
+            if next_cost >= distances.get(next_state, float("inf")):
+                continue
+            core = next_state[:3]
+            core_labels = labels.setdefault(core, {})
+            if any(
+                used_transfers <= next_transfers and label_cost <= next_cost
+                for used_transfers, label_cost in core_labels.items()
+            ):
+                continue
+            for used_transfers, label_cost in list(core_labels.items()):
+                if used_transfers >= next_transfers and label_cost >= next_cost:
+                    distances.pop((*core, used_transfers), None)
+                    del core_labels[used_transfers]
+            core_labels[next_transfers] = next_cost
+            distances[next_state] = next_cost
+            previous[next_state] = (state, segment)
+            heappush(
+                queue,
+                (next_cost + heuristic(segment.to_stop_id), next(sequence), next_cost, next_state),
+            )
 
+    if best_destination is None:
+        raise RouteNotFoundError("No route found within max_transfers")
 
-def _segments_from_state_path(graph: nx.DiGraph, states: list[RouteState]) -> list[Segment]:
-    return [graph[source][target]["segment"] for source, target in pairwise(states)]
+    segments: list[Segment] = []
+    cursor = best_destination
+    while cursor != source:
+        cursor, segment = previous[cursor]
+        segments.append(segment)
+    segments.reverse()
+    segments = apply_scheduled_waits(segments, schedule_index, departure_at)
+    fare_quote = quote_journey(
+        segments,
+        catalog=fare_catalog,
+        departure_at=departure_at,
+        payment_profile=payment_profile,
+    )
+    return RouteOption(
+        criteria=criteria,
+        total_duration_min=sum(
+            segment.avg_duration_min + segment.scheduled_wait_min for segment in segments
+        ),
+        total_fare=fare_quote.estimated_amount,
+        fare_quote=fare_quote,
+        transfer_count=best_destination[3],
+        segments=segments,
+        geojson=build_feature_collection(segments),
+    )
 
 
 def _fare_identity(segment: Segment) -> str:
-    return segment.fare_product_id or f"legacy:{segment.route_id}"
+    product = segment.fare_product_id or f"legacy:{segment.route_id}"
+    return f"{product}:{segment.route_id}" if segment.mode is TransportMode.ANGKOT else product
+
+
+def _reverse_reachable(
+    graph: nx.MultiDiGraph,
+    destination_stop_id: str,
+    extra_incoming: dict[str, list[Segment]],
+) -> set[str]:
+    """Find nodes that can reach the destination before expanding fare/transfer state."""
+    reachable = {destination_stop_id}
+    queue = deque([destination_stop_id])
+    while queue:
+        stop_id = queue.popleft()
+        predecessors = list(graph.predecessors(stop_id)) if stop_id in graph else []
+        predecessors.extend(segment.from_stop_id for segment in extra_incoming.get(stop_id, []))
+        for predecessor in predecessors:
+            if predecessor not in reachable:
+                reachable.add(predecessor)
+                queue.append(predecessor)
+    return reachable
+
+
+def _node_coordinates(
+    graph: nx.MultiDiGraph, stop_id: str, incoming: list[Segment]
+) -> tuple[float, float] | None:
+    if stop_id in graph:
+        data = graph.nodes[stop_id]
+        if data.get("lat") is not None and data.get("lng") is not None:
+            return float(data["lat"]), float(data["lng"])
+    if incoming:
+        lng, lat = incoming[0].coordinates[-1]
+        return lat, lng
+    return None
+
+
+def _distance_km(first: tuple[float, float], second: tuple[float, float]) -> float:
+    lat1, lng1 = first
+    lat2, lng2 = second
+    delta_lat = radians(lat2 - lat1)
+    delta_lng = radians(lng2 - lng1)
+    value = sin(delta_lat / 2) ** 2 + (
+        cos(radians(lat1)) * cos(radians(lat2)) * sin(delta_lng / 2) ** 2
+    )
+    return 2 * 6371.0088 * asin(sqrt(value))

@@ -1,6 +1,7 @@
 """Explicit and name-validated walking connectors between supported transit modes."""
 
 import hashlib
+import logging
 import re
 import unicodedata
 from datetime import date
@@ -17,13 +18,16 @@ from app.models.schema import (
     ServiceCategory,
     TransportMode,
 )
+from app.routing.pedestrian import PedestrianRouter, get_pedestrian_router
+
+logger = logging.getLogger(__name__)
 
 VERIFIED_AT = date(2026, 7, 20)
 MAX_NAMED_TRANSFER_METERS = 350
 MAX_EXPLICIT_TRANSFER_METERS = 500
-MAX_SPATIAL_TRANSFER_METERS = 150
-SPATIAL_CONNECTOR_MODES = {"angkot", "bikun"}
-SAME_MODE_CONNECTOR_MODES = {"transjakarta"}
+MAX_SPATIAL_TRANSFER_METERS = 250
+SPATIAL_CONNECTOR_MODES = {"bikun", "jaklingko"}
+SAME_MODE_CONNECTOR_MODES = {"transjakarta", "jaklingko"}
 MAX_SAME_MODE_TRANSFER_METERS = 120
 
 RAIL_TRANSFERS = (
@@ -52,7 +56,11 @@ TRANSJAKARTA_ALIASES = {
 }
 
 
-async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
+async def build_transfer_segments(
+    session: AsyncSession,
+    *,
+    pedestrian_router: PedestrianRouter | None = None,
+) -> list[Segment]:
     rows = (
         await session.execute(
             select(
@@ -61,7 +69,9 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
                 StopRecord.mode,
                 func.ST_Y(StopRecord.location),
                 func.ST_X(StopRecord.location),
-            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")))
+            ).where(
+                StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "jaklingko", "bikun"))
+            )
         )
     ).tuples()
     stops = {
@@ -73,7 +83,9 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             pairs.add(tuple(sorted((first_id, second_id))))
 
     rail_stops = {key: value for key, value in stops.items() if value[1] in {"mrt", "lrt", "krl"}}
-    transjakarta_stops = {key: value for key, value in stops.items() if value[1] == "transjakarta"}
+    transjakarta_stops = {
+        key: value for key, value in stops.items() if value[1] in {"transjakarta", "jaklingko"}
+    }
     for rail_id, rail in rail_stops.items():
         for transit_id, transit in transjakarta_stops.items():
             distance_meters = _distance_meters(rail[2], rail[3], transit[2], transit[3])
@@ -89,7 +101,7 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             func.ST_DWithin(
                 first.location,
                 second.location,
-                0.001347,  # roughly 150m in degrees at equator
+                0.002245,  # roughly 250m in degrees at equator
             ),
         )
         .where(
@@ -120,11 +132,25 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             ):
                 pairs.add(tuple(sorted((first_id, second_id))))
 
-    return [
+    segments = [
         segment
         for first_id, second_id in sorted(pairs)
         for segment in _walking_pair(first_id, second_id, stops[first_id], stops[second_id])
     ]
+    router = pedestrian_router or (get_pedestrian_router() if _has_enabled_router() else None)
+    if router is not None:
+        try:
+            segments = await router.enrich_segments(segments)
+        except Exception:
+            logger.warning("Pedestrian enrichment failed during ingestion; keeping fallback")
+    return segments
+
+
+def _has_enabled_router() -> bool:
+    try:
+        return bool(get_pedestrian_router().enabled)
+    except Exception:
+        return False
 
 
 def _supports_spatial_transfer(

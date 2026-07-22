@@ -16,10 +16,16 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
                 "fromStopId": segment.from_stop_id,
                 "toStopId": segment.to_stop_id,
                 "avgDurationMin": segment.avg_duration_min,
+                "scheduledWaitMin": segment.scheduled_wait_min,
+                "scheduleSourceUrl": segment.schedule_source_url,
                 "fare": segment.fare,
                 "fareProductId": segment.fare_product_id,
                 "dataConfidence": segment.data_confidence.value,
                 "lastVerifiedAt": segment.last_verified_at.isoformat(),
+                "walkingDistanceMeters": segment.walking_distance_meters,
+                "walkingRouteSource": (
+                    segment.walking_route_source.value if segment.walking_route_source else None
+                ),
             },
         )
         for segment in segments

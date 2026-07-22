@@ -3,7 +3,7 @@ from datetime import date
 import pandas as pd
 
 from app.ingestion.gtfs.transjakarta import normalize_feed
-from app.models.schema import ServiceCategory
+from app.models.schema import ServiceCategory, TransportMode
 
 
 def test_normalizes_two_directed_segments_and_keeps_boarding_fare() -> None:
@@ -111,3 +111,53 @@ def test_normalizes_two_directed_segments_and_keeps_boarding_fare() -> None:
         (106.805, -6.205),
         (106.81, -6.21),
     ]
+
+
+def test_classifies_mikrotrans_as_separate_jaklingko_mode() -> None:
+    dataset = normalize_feed(
+        stops=pd.DataFrame(
+            [
+                {"stop_id": "a", "stop_name": "A", "stop_lat": -6.2, "stop_lon": 106.8},
+                {"stop_id": "b", "stop_name": "B", "stop_lat": -6.21, "stop_lon": 106.81},
+            ]
+        ),
+        routes=pd.DataFrame(
+            [
+                {
+                    "route_id": "JAK1",
+                    "route_short_name": "JAK.1",
+                    "route_long_name": "Mikrotrans test",
+                    "route_desc": "Mikrotrans",
+                }
+            ]
+        ),
+        trips=pd.DataFrame([{"trip_id": "micro", "route_id": "JAK1", "direction_id": "0"}]),
+        stop_times=pd.DataFrame(
+            [
+                {
+                    "trip_id": "micro",
+                    "stop_sequence": 1,
+                    "stop_id": "a",
+                    "departure_time": "05:00:00",
+                    "arrival_time": "05:00:00",
+                },
+                {
+                    "trip_id": "micro",
+                    "stop_sequence": 2,
+                    "stop_id": "b",
+                    "departure_time": "05:05:00",
+                    "arrival_time": "05:05:00",
+                },
+            ]
+        ),
+        shapes=None,
+        fare_attributes=pd.DataFrame([], columns=["fare_id", "price"]),
+        fare_rules=pd.DataFrame([], columns=["fare_id", "route_id"]),
+        verified_at=date(2026, 7, 22),
+    )
+
+    assert {stop.id for stop in dataset.stops} == {"jaklingko:a", "jaklingko:b"}
+    assert {stop.modes[0] for stop in dataset.stops} == {TransportMode.JAKLINGKO}
+    assert dataset.segments[0].mode is TransportMode.JAKLINGKO
+    assert dataset.segments[0].route_id == "jaklingko:JAK1:0"
+    assert dataset.segments[0].fare_product_id == "jaklingko:mikrotrans"

@@ -6,14 +6,23 @@ from geoalchemy2 import Geography
 from sqlalchemy import case, cast, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import SegmentRecord, StopRecord
+from app.db.models import (
+    FlexibleRouteRecord,
+    SegmentRecord,
+    ServiceFrequencyRecord,
+    StopRecord,
+)
 from app.models.schema import (
+    DataConfidence,
+    FlexibleRoute,
     NearbyStop,
     NearbyStopPurpose,
     RouteOverview,
     Segment,
+    ServiceFrequency,
     Stop,
     TransportMode,
+    WalkingRouteSource,
 )
 
 
@@ -25,6 +34,103 @@ async def load_segments(session: AsyncSession) -> list[Segment]:
         )
     )
     return [segment_from_record(record, geometry_json) for record, geometry_json in result.tuples()]
+
+
+async def load_flexible_routes(session: AsyncSession) -> list[FlexibleRoute]:
+    result = await session.execute(
+        select(
+            FlexibleRouteRecord,
+            func.ST_AsGeoJSON(FlexibleRouteRecord.geometry).label("geometry_json"),
+        ).order_by(FlexibleRouteRecord.id)
+    )
+    routes = []
+    for record, geometry_json in result.tuples():
+        geometry = json.loads(geometry_json)
+        routes.append(
+            FlexibleRoute(
+                id=record.id,
+                route_code=record.route_code,
+                route_name=record.route_name,
+                mode=record.mode,
+                service_category=record.service_category,
+                service_name=record.service_name,
+                avg_speed_kmh=record.avg_speed_kmh,
+                fare=record.fare,
+                fare_product_id=record.fare_product_id,
+                data_confidence=record.data_confidence,
+                last_verified_at=record.last_verified_at,
+                color=record.color,
+                coordinates=[tuple(point) for point in geometry["coordinates"]],
+                source_url=record.source_url,
+            )
+        )
+    return routes
+
+
+async def load_all_stops(session: AsyncSession) -> list[Stop]:
+    result = await session.execute(
+        select(
+            StopRecord.id,
+            StopRecord.name,
+            StopRecord.mode,
+            func.ST_Y(StopRecord.location),
+            func.ST_X(StopRecord.location),
+        )
+    )
+    return [
+        Stop(id=stop_id, name=name, modes=[mode], lat=float(lat), lng=float(lng))
+        for stop_id, name, mode, lat, lng in result.tuples()
+    ]
+
+
+async def load_service_frequencies(session: AsyncSession) -> list[ServiceFrequency]:
+    rows = (await session.execute(select(ServiceFrequencyRecord))).scalars()
+    return [
+        ServiceFrequency(
+            id=row.id,
+            route_id=row.route_id,
+            mode=row.mode,
+            day_type=row.day_type,
+            start_minute=row.start_minute,
+            end_minute=row.end_minute,
+            headway_min=row.headway_min,
+            source_url=row.source_url,
+            last_verified_at=row.last_verified_at,
+        )
+        for row in rows
+    ]
+
+
+async def load_flexible_route_segment(session: AsyncSession, route_id: str) -> Segment | None:
+    result = await session.execute(
+        select(
+            FlexibleRouteRecord,
+            func.ST_AsGeoJSON(FlexibleRouteRecord.geometry).label("geometry_json"),
+        ).where(FlexibleRouteRecord.id == route_id)
+    )
+    row = result.tuples().first()
+    if row is None:
+        return None
+    record, geometry_json = row
+    coordinates = [tuple(point) for point in json.loads(geometry_json)["coordinates"]]
+    return Segment(
+        id=f"{record.id}:geometry",
+        route_id=record.id,
+        route_code=record.route_code,
+        route_name=record.route_name,
+        from_stop_id=f"{record.id}:start",
+        to_stop_id=f"{record.id}:end",
+        mode=record.mode,
+        service_category=record.service_category,
+        service_name=record.service_name,
+        avg_duration_min=1,
+        fare=record.fare,
+        fare_product_id=record.fare_product_id,
+        data_confidence=DataConfidence(record.data_confidence),
+        last_verified_at=record.last_verified_at,
+        color=record.color,
+        coordinates=coordinates,
+    )
 
 
 async def load_route_segments(session: AsyncSession, route_id: str) -> list[Segment]:
@@ -58,6 +164,10 @@ def segment_from_record(record: SegmentRecord, geometry_json: str) -> Segment:
         last_verified_at=record.last_verified_at,
         color=record.color,
         coordinates=[tuple(point) for point in geometry["coordinates"]],
+        walking_distance_meters=record.walking_distance_meters,
+        walking_route_source=(
+            WalkingRouteSource(record.walking_route_source) if record.walking_route_source else None
+        ),
     )
 
 
@@ -214,12 +324,12 @@ async def list_route_overviews(
     limit: int,
     offset: int,
 ) -> tuple[list[RouteOverview], int]:
-    conditions = (
+    segment_conditions = (
         [SegmentRecord.mode == mode.value]
         if mode is not None
         else [SegmentRecord.mode != TransportMode.WALK.value]
     )
-    statement = (
+    segment_statement = (
         select(
             SegmentRecord.route_id,
             SegmentRecord.route_code,
@@ -229,7 +339,7 @@ async def list_route_overviews(
             SegmentRecord.service_category,
             func.count().label("segment_count"),
         )
-        .where(*conditions)
+        .where(*segment_conditions)
         .group_by(
             SegmentRecord.route_id,
             SegmentRecord.route_code,
@@ -238,15 +348,9 @@ async def list_route_overviews(
             SegmentRecord.color,
             SegmentRecord.service_category,
         )
-        .order_by(SegmentRecord.route_name, SegmentRecord.route_code)
-        .offset(offset)
-        .limit(limit)
     )
-    count_statement = select(func.count(func.distinct(SegmentRecord.route_id))).where(*conditions)
-    result = await session.execute(statement)
-    total = await session.scalar(count_statement)
-    items = []
-    for row in result.tuples():
+    items: list[RouteOverview] = []
+    for row in (await session.execute(segment_statement)).tuples():
         (
             route_id,
             route_code,
@@ -267,4 +371,29 @@ async def list_route_overviews(
                 segment_count=segment_count,
             )
         )
-    return items, int(total or 0)
+
+    flexible_conditions = [FlexibleRouteRecord.mode == mode.value] if mode is not None else []
+    flexible_statement = select(
+        FlexibleRouteRecord.id,
+        FlexibleRouteRecord.route_code,
+        FlexibleRouteRecord.mode,
+        FlexibleRouteRecord.route_name,
+        FlexibleRouteRecord.color,
+        FlexibleRouteRecord.service_category,
+    ).where(*flexible_conditions)
+    for route_id, code, stored_mode, name, color, category in (
+        await session.execute(flexible_statement)
+    ).tuples():
+        items.append(
+            RouteOverview(
+                id=route_id,
+                code=code,
+                mode=stored_mode,
+                name=name,
+                color=color,
+                service_category=category,
+                segment_count=1,
+            )
+        )
+    items.sort(key=lambda item: (item.name.casefold(), item.code.casefold(), item.id))
+    return items[offset : offset + limit], len(items)
