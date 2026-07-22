@@ -129,3 +129,58 @@ def test_live_network_layers_and_representative_multimodal_routes() -> None:
         assert all(
             option["fareQuote"]["status"] == "range" for option in angkot_route.json()["options"]
         )
+
+        # Real coordinate regressions: routing must consider the closest useful
+        # station/corridor, not just the nearest fixed stop.
+        sman_to_sawangan = client.post(
+            "/route-search",
+            json={
+                "originLat": -6.3361189,
+                "originLng": 106.8358042,
+                "destinationLat": -6.4001908,
+                "destinationLng": 106.76372,
+                "accessRadiusMeters": 1500,
+                "maxTransfers": 5,
+            },
+        )
+        assert sman_to_sawangan.status_code == 200
+        fastest = next(
+            option
+            for option in sman_to_sawangan.json()["options"]
+            if option["criteria"] == "fastest"
+        )
+        assert [(segment["mode"], segment["routeCode"]) for segment in fastest["segments"]] == [
+            ("walk", "WALK"),
+            ("krl", "BOGOR LINE"),
+            ("walk", "WALK"),
+            ("angkot", "D03"),
+            ("walk", "WALK"),
+        ]
+        assert fastest["segments"][0]["toStopName"] == "Universitas Pancasila"
+        assert fastest["segments"][3]["trafficSource"] == "historical_profile"
+        angkot_feature = next(
+            feature
+            for feature in fastest["geojson"]["features"]
+            if feature["properties"]["mode"] == "angkot"
+        )
+        assert angkot_feature["properties"]["trafficSource"] == "historical_profile"
+
+        ui_to_gunadarma = client.post(
+            "/route-search",
+            json={
+                "originLat": -6.3628,
+                "originLng": 106.824,
+                "destinationLat": -6.3539705,
+                "destinationLng": 106.8412175,
+                "accessRadiusMeters": 1500,
+                "maxTransfers": 5,
+            },
+        )
+        assert ui_to_gunadarma.status_code == 200
+        modes_and_codes = {
+            (segment["mode"], segment["routeCode"])
+            for option in ui_to_gunadarma.json()["options"]
+            for segment in option["segments"]
+        }
+        assert ("bikun", "BLUE") in modes_and_codes
+        assert ("angkot", "D11") in modes_and_codes

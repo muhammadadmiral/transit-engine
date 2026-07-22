@@ -12,8 +12,9 @@ The backend is the only owner of geocoding, transit data, schedules, fares, and 
 | Kabupaten Bogor angkot | Pemkab Bogor `Trayek Angkutan Umum` ArcGIS layer | Official |
 | Depok D03/D11 | Depok route regulation and reviewed road geometry | Official route, curated geometry |
 | Other conventional angkot | Filtered OpenStreetMap route relations | Community |
-| Geocoding | Nominatim plus Photon | External/community |
+| Geocoding | TomTom Search/Reverse when configured, with Nominatim and Photon fallbacks | External/community |
 | Current road traffic | TomTom Flow Segment Data when configured | External/live |
+| Road map matching | TomTom Snap to Roads, optional reviewed refinement | External |
 | Road ETA fallback | Jakarta day/time profile | Estimated |
 | Ojek online fallback | Nearest transit connector only; no operator API | Estimated |
 
@@ -24,6 +25,26 @@ Official and community corridors are stored in separate namespaces. A failed com
 `flexible_routes` stores a directed `LINESTRING`, route identity, source, confidence, verification date, average speed, and fare product. It does not store invented angkot stops. At graph-build time the corridor is sampled about every 180 metres; coordinate searches project walking access to the nearest usable points. Nearby corridors and fixed rail/bus stops receive short walking connectors.
 
 When OpenStreetMap contains only one non-loop direction for a conventional PP route, the importer adds a clearly named community return direction. Explicitly mapped direction pairs remain untouched.
+
+## Mikrotrans is not modeled as flexible angkot
+
+Mikrotrans uses small vehicles and serves neighborhood streets, but the official TransJakarta GTFS publishes ordered stop points and trip shapes. The engine therefore keeps it in the compatibility API mode `jaklingko`, labels it **Mikrotrans**, and permits boarding/alighting only at those official points. A point may be a simple signed bus stop rather than a BRT-style shelter. Conventional angkot remains the only hail-and-ride corridor model.
+
+JakLingko is the wider integrated transport/payment system, not the vehicle class. The compatibility mode name is retained so existing clients do not break; `serviceCategory=microtrans` is the precise service classification.
+
+## Optional TomTom enhancement
+
+Set `TOMTOM_API_KEY` only on the backend. The same secret enables POI/address search, reverse geocoding, current road traffic, and the explicit angkot trace-refinement command:
+
+```bash
+# Validate provider output without changing the database
+.venv/bin/python -m app.ingestion.geometry.refine_angkot_tracks
+
+# Persist only plausible map-matched traces
+.venv/bin/python -m app.ingestion.geometry.refine_angkot_tracks --apply
+```
+
+The refiner follows the already sourced trace and rejects shifted endpoints or implausible length changes. It does not ask a road router to invent the path between termini. Review provider licensing before persisting production-derived geometry.
 
 ## Refresh commands
 

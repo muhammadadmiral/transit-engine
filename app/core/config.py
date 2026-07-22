@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     geocoder_user_agent: str = "TransHub-Jabodetabek/0.1"
     geocoder_timeout_seconds: float = 8.0
     geocoder_nominatim_interval_seconds: float = 1.0
+    tomtom_api_key: SecretStr = SecretStr("")
+    tomtom_search_url: str = "https://api.tomtom.com/search/2"
+    tomtom_snap_to_roads_url: str = "https://api.tomtom.com/snapToRoads/1"
     tomtom_traffic_api_key: SecretStr = SecretStr("")
     tomtom_traffic_url: str = (
         "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
@@ -48,6 +51,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def effective_tomtom_api_key(self) -> str:
+        """Use one TomTom key while keeping the old traffic-only variable compatible."""
+        return (
+            self.tomtom_api_key.get_secret_value()
+            or self.tomtom_traffic_api_key.get_secret_value()
+        )
 
 
 @lru_cache

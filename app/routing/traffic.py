@@ -61,7 +61,7 @@ class RoadTrafficEstimator:
 
     @property
     def live_enabled(self) -> bool:
-        return bool(self.settings.tomtom_traffic_api_key.get_secret_value())
+        return bool(self.settings.effective_tomtom_api_key)
 
     async def enrich_segments(
         self, segments: list[Segment], departure_at: datetime | None
@@ -116,7 +116,7 @@ class RoadTrafficEstimator:
 
     async def _request(self, lat: float, lng: float) -> dict:
         params = {
-            "key": self.settings.tomtom_traffic_api_key.get_secret_value(),
+            "key": self.settings.effective_tomtom_api_key,
             "point": f"{lat},{lng}",
             "unit": "kmph",
         }

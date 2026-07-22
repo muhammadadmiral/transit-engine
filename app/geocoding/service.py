@@ -1,9 +1,11 @@
 """Cached aggregation of free OpenStreetMap geocoders."""
 
 import asyncio
+import re
 from collections import OrderedDict
 from time import monotonic
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -39,19 +41,30 @@ class GeocodingService:
 
         upstream: list[PlaceResult] = []
         errors: list[Exception] = []
-        try:
-            upstream.extend(await self._search_nominatim(query, limit))
-        except (httpx.HTTPError, ValueError, TypeError) as error:
-            errors.append(error)
-
-        if len(upstream) < min(3, limit):
+        candidate_limit = max(6, limit)
+        provider_count = 2 + int(bool(self.settings.effective_tomtom_api_key))
+        if self.settings.effective_tomtom_api_key:
             try:
-                upstream.extend(await self._search_photon(query, limit))
+                upstream.extend(await self._search_tomtom(query, candidate_limit))
             except (httpx.HTTPError, ValueError, TypeError) as error:
                 errors.append(error)
 
-        results = _deduplicate(upstream, limit)
-        if not results and len(errors) == 2:
+        # Keep the free providers as fallbacks and gap-fillers. A configured
+        # TomTom result is ranked first, but no landmark name is special-cased.
+        if len(upstream) < candidate_limit:
+            try:
+                upstream.extend(await self._search_nominatim(query, candidate_limit))
+            except (httpx.HTTPError, ValueError, TypeError) as error:
+                errors.append(error)
+
+        if not self.settings.effective_tomtom_api_key or len(upstream) < candidate_limit:
+            try:
+                upstream.extend(await self._search_photon(query, candidate_limit))
+            except (httpx.HTTPError, ValueError, TypeError) as error:
+                errors.append(error)
+
+        results = _rank_results(query, _deduplicate(upstream, len(upstream)))[:limit]
+        if not results and len(errors) == provider_count:
             raise GeocoderUnavailableError from errors[-1]
         self._put_cached(cache_key, results)
         return results
@@ -62,11 +75,10 @@ class GeocodingService:
         if cached is not None:
             return cached
 
-        responses = await asyncio.gather(
-            self._reverse_nominatim(lat, lng),
-            self._reverse_photon(lat, lng),
-            return_exceptions=True,
-        )
+        requests = [self._reverse_nominatim(lat, lng), self._reverse_photon(lat, lng)]
+        if self.settings.effective_tomtom_api_key:
+            requests.insert(0, self._reverse_tomtom(lat, lng))
+        responses = await asyncio.gather(*requests, return_exceptions=True)
         candidates = [response for response in responses if isinstance(response, PlaceResult)]
         if not candidates and all(isinstance(response, Exception) for response in responses):
             raise GeocoderUnavailableError from responses[-1]
@@ -155,6 +167,40 @@ class GeocodingService:
             response.raise_for_status()
             return response.json()
 
+    async def _search_tomtom(self, query: str, limit: int) -> list[PlaceResult]:
+        payload = await self._tomtom_request(
+            f"/search/{quote(query.strip(), safe='')}.json",
+            {
+                "countrySet": "ID",
+                "lat": "-6.2700",
+                "limit": str(limit),
+                "lon": "106.8300",
+                "language": "id-ID",
+                "typeahead": "false",
+            },
+        )
+        rows = payload.get("results", []) if isinstance(payload, dict) else []
+        return [_from_tomtom(row) for row in rows if isinstance(row, dict)]
+
+    async def _reverse_tomtom(self, lat: float, lng: float) -> PlaceResult | None:
+        payload = await self._tomtom_request(
+            f"/reverseGeocode/{lat},{lng}.json",
+            {"language": "id-ID", "radius": "120"},
+        )
+        rows = payload.get("addresses", []) if isinstance(payload, dict) else []
+        return _from_tomtom(rows[0], reverse=True) if rows else None
+
+    async def _tomtom_request(self, path: str, params: dict[str, str]) -> Any:
+        params = {**params, "key": self.settings.effective_tomtom_api_key}
+        async with httpx.AsyncClient(timeout=self.settings.geocoder_timeout_seconds) as client:
+            response = await client.get(
+                f"{self.settings.tomtom_search_url.rstrip('/')}{path}",
+                params=params,
+                headers={"Accept": "application/json"},
+            )
+            response.raise_for_status()
+            return response.json()
+
     def _get_cached(self, key: str) -> Any | None:
         cached = self._cache.get(key)
         if cached is None:
@@ -216,6 +262,51 @@ def _from_photon(feature: dict[str, Any]) -> PlaceResult:
     )
 
 
+def _from_tomtom(row: dict[str, Any], *, reverse: bool = False) -> PlaceResult:
+    address = row.get("address") if isinstance(row.get("address"), dict) else {}
+    position = row.get("position") if isinstance(row.get("position"), dict) else {}
+    poi = row.get("poi") if isinstance(row.get("poi"), dict) else {}
+    classifications = (
+        poi.get("classifications") if isinstance(poi.get("classifications"), list) else []
+    )
+    classification = (
+        classifications[0]
+        if classifications and isinstance(classifications[0], dict)
+        else {}
+    )
+    names = classification.get("names") if isinstance(classification.get("names"), list) else []
+    category = str(
+        classification.get("code")
+        or (names[0].get("name") if names and isinstance(names[0], dict) else "")
+        or row.get("type")
+        or "address"
+    )
+    label = str(
+        poi.get("name")
+        or address.get("freeformAddress")
+        or address.get("streetName")
+        or "Lokasi"
+    )
+    subtitle = str(address.get("freeformAddress") or label)
+    result_type = "reverse" if reverse else str(row.get("type") or "place")
+    provider_id = str(row.get("id") or f"{position.get('lat', '')},{position.get('lon', '')}")
+    return PlaceResult(
+        area=str(
+            address.get("municipality")
+            or address.get("municipalitySubdivision")
+            or address.get("countrySubdivision")
+            or "Indonesia"
+        ),
+        category=category,
+        id=f"tomtom:{result_type}:{provider_id}",
+        label=label,
+        lat=float(position["lat"]),
+        lng=float(position["lon"]),
+        subtitle=subtitle,
+        source=GeocodeSource.TOMTOM,
+    )
+
+
 def _area(address: dict[str, Any]) -> str:
     return str(
         address.get("city")
@@ -244,6 +335,33 @@ def _deduplicate(results: list[PlaceResult], limit: int) -> list[PlaceResult]:
         if len(unique) == limit:
             break
     return unique
+
+
+def _rank_results(query: str, results: list[PlaceResult]) -> list[PlaceResult]:
+    """Rerank provider results generically; never special-case a landmark name."""
+    query_tokens = _tokens(query)
+
+    def score(result: PlaceResult) -> tuple[float, int, int]:
+        label_tokens = _tokens(result.label)
+        all_tokens = label_tokens | _tokens(result.subtitle) | _tokens(result.area)
+        matched_weight = sum(
+            (2.0 if len(token) == 1 else 1.0) for token in query_tokens & all_tokens
+        )
+        total_weight = sum((2.0 if len(token) == 1 else 1.0) for token in query_tokens) or 1
+        coverage = matched_weight / total_weight
+        normalized_query = " ".join(query.casefold().split())
+        normalized_label = " ".join(result.label.casefold().split())
+        phrase_bonus = (
+            2 if normalized_label == normalized_query else int(normalized_label in normalized_query)
+        )
+        provider_priority = 2 if result.source is GeocodeSource.TOMTOM else 1
+        return coverage, phrase_bonus, provider_priority
+
+    return sorted(results, key=score, reverse=True)
+
+
+def _tokens(value: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", value.casefold()))
 
 
 def _reverse_score(result: PlaceResult) -> tuple[int, int]:

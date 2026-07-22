@@ -102,6 +102,7 @@ class NearbyStopPurpose(StrEnum):
 class GeocodeSource(StrEnum):
     NOMINATIM = "nominatim"
     PHOTON = "photon"
+    TOMTOM = "tomtom"
 
 
 class PlaceResult(SchemaModel):
