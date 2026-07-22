@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import get_session
 from app.db.transit_repository import find_nearby_stops
 from app.models.schema import (
@@ -26,7 +27,6 @@ from app.routing.pedestrian import get_pedestrian_router
 from app.routing.schedule_cache import get_schedule_index
 from app.routing.stop_directory import build_stop_directory
 from app.routing.traffic import get_traffic_estimator
-from app.core.config import get_settings
 
 router = APIRouter(prefix="/route-search", tags=["route-search"])
 _routing_slots = asyncio.Semaphore(max(1, get_settings().routing_max_concurrency))
