@@ -47,6 +47,7 @@ class DataConfidence(StrEnum):
 
 
 class WalkingRouteSource(StrEnum):
+    CURATED = "curated"
     FALLBACK = "fallback"
     TOMTOM = "tomtom"
     VALHALLA = "valhalla"
@@ -54,7 +55,12 @@ class WalkingRouteSource(StrEnum):
 
 class TrafficSource(StrEnum):
     HISTORICAL_PROFILE = "historical_profile"
+    LIVE_GOOGLE = "live_google"
     LIVE_TOMTOM = "live_tomtom"
+
+
+class AccessAction(StrEnum):
+    PAID_STATION_CROSSING = "paid_station_crossing"
 
 
 class WeatherSource(StrEnum):
@@ -173,6 +179,9 @@ class Segment(SchemaModel):
     traffic_factor: float | None = Field(default=None, ge=0.1, le=5)
     traffic_source: TrafficSource | None = None
     traffic_updated_at: datetime | None = None
+    traffic_delay_min: float | None = Field(default=None, ge=0)
+    access_action: AccessAction | None = None
+    instruction: str | None = None
     weather_factor: float | None = Field(default=None, ge=1, le=2)
     weather_source: WeatherSource | None = None
     weather_updated_at: datetime | None = None

@@ -13,7 +13,7 @@ The backend is the only owner of geocoding, transit data, schedules, fares, and 
 | Depok D03/D11 | Depok route regulation and reviewed road geometry | Official route, curated geometry |
 | Other conventional angkot | Filtered OpenStreetMap route relations | Community |
 | Geocoding | TomTom Search/Reverse when configured, with Nominatim and Photon fallbacks | External/community |
-| Current road traffic | TomTom Flow Segment Data when configured | External/live |
+| Current road traffic | TomTom route summary/Flow; optional budgeted Google Routes fallback | External/live |
 | Current precipitation | Open-Meteo current conditions | External/live |
 | Road map matching | TomTom Snap to Roads, optional reviewed refinement | External |
 | Road ETA fallback | Jakarta day/time profile | Estimated |
@@ -46,6 +46,36 @@ Set `TOMTOM_API_KEY` only on the backend. The same secret enables POI/address se
 ```
 
 The refiner follows the already sourced trace and rejects shifted endpoints or implausible length changes. It does not ask a road router to invent the path between termini. Review provider licensing before persisting production-derived geometry.
+
+Traffic enrichment never replaces a transit track. TomTom receives up to five
+anchors sampled from the official GTFS or reviewed angkot geometry and only its
+current-versus-historical duration ratio is applied. The GeoJSON remains the
+operator/reviewed geometry, so a car route cannot pull a Mikrotrans, TransJakarta,
+or angkot line onto a nearby shortcut.
+
+## Optional Google Routes fallback
+
+`GOOGLE_MAPS_API_KEY` enables a backend-only fallback when no TomTom key is
+available. Requests ask only for `duration` and `staticDuration`; the returned
+Google polyline is deliberately not rendered or persisted. The defaults cap one
+process at 100 calls/day and 2,000 calls/month. These counters reset on process
+restart, so production must also set a slightly lower hard quota and billing
+alert in Google Cloud. `TRAFFIC_AWARE` is a Pro Routes request; do not expose the
+key in Vite/client environment variables.
+
+The July 2026 Google Maps price list gives Compute Routes Pro a 5,000-event
+monthly free usage cap. Keep the application budget below that cap because other
+projects/SKUs on the same billing account and quota-versus-billing reporting lag
+can still affect the bill.
+
+## Stasiun UI paid-area crossing
+
+The graph contains a reviewed pedestrian access edge between the campus side and
+the Margonda/Jalan Pepaya side of Stasiun UI. It is labeled as a paid station
+crossing, retains its peron/gate instruction, uses the minimum KRL fare product,
+and is never overwritten by generic pedestrian routing. This lets journeys such
+as FT UI → Bikun → Stasiun UI → opposite gate → Jalan Pepaya/Margonda render as
+separate, auditable legs.
 
 Short gaps of 350–1,500 metres inside an otherwise sourced trace can be filled
 through the configured Valhalla/OSM road network. Larger holes are rejected:

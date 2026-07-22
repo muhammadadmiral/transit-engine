@@ -9,7 +9,7 @@ from app.db.transit_repository import load_all_stops, load_flexible_routes, load
 from app.routing.flexible import add_flexible_transfers, materialize_flexible_segments
 from app.routing.graph import build_graph
 from app.routing.pedestrian import invalidate_pedestrian_cache
-from app.routing.transfers import add_sparse_fixed_transfers
+from app.routing.transfers import add_curated_access_paths, add_sparse_fixed_transfers
 
 _cached_graph: nx.MultiDiGraph | None = None
 _cache_lock = asyncio.Lock()
@@ -32,6 +32,7 @@ async def get_routing_graph(session: AsyncSession) -> nx.MultiDiGraph:
         _cached_graph = build_graph([*segments, *materialize_flexible_segments(routes)])
         add_sparse_fixed_transfers(_cached_graph, stops)
         add_flexible_transfers(_cached_graph, stops)
+        add_curated_access_paths(_cached_graph)
         return _cached_graph
 
 

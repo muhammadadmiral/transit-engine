@@ -36,7 +36,7 @@ def _segment(mode: TransportMode = TransportMode.ANGKOT) -> Segment:
 
 def test_historical_profile_affects_only_road_modes() -> None:
     peak = datetime(2026, 7, 22, 8, tzinfo=ZoneInfo("Asia/Jakarta"))
-    assert historical_traffic_factor(_segment(), peak) == 1.4
+    assert historical_traffic_factor(_segment(), peak) == 1.18
     assert historical_traffic_factor(_segment(TransportMode.KRL), peak) == 1.0
 
 
@@ -46,11 +46,14 @@ async def test_live_tomtom_factor_is_applied_and_labeled() -> None:
         return httpx.Response(
             200,
             json={
-                "flowSegmentData": {
-                    "currentTravelTime": 180,
-                    "freeFlowTravelTime": 100,
-                    "confidence": 0.9,
-                }
+                "routes": [
+                    {
+                        "summary": {
+                            "travelTimeInSeconds": 180,
+                            "historicTrafficTravelTimeInSeconds": 150,
+                        }
+                    }
+                ]
             },
         )
 
@@ -60,8 +63,8 @@ async def test_live_tomtom_factor_is_applied_and_labeled() -> None:
     result = await estimator.enrich_segments([_segment()], datetime.now(ZoneInfo("Asia/Jakarta")))
     await client.aclose()
 
-    assert result[0].avg_duration_min == 18
-    assert result[0].traffic_factor == 1.8
+    assert result[0].avg_duration_min == 12
+    assert result[0].traffic_factor == 1.2
     assert result[0].traffic_source is TrafficSource.LIVE_TOMTOM
 
 
@@ -72,5 +75,36 @@ async def test_historical_fallback_is_explicit_without_key() -> None:
         [_segment()], datetime(2026, 7, 22, 8, tzinfo=ZoneInfo("Asia/Jakarta"))
     )
 
-    assert result[0].avg_duration_min == 14
+    assert result[0].avg_duration_min == 11.8
     assert result[0].traffic_source is TrafficSource.HISTORICAL_PROFILE
+
+
+@pytest.mark.asyncio
+async def test_google_fallback_is_budgeted_and_route_cached() -> None:
+    calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        assert request.headers["X-Goog-FieldMask"] == "routes.duration,routes.staticDuration"
+        return httpx.Response(
+            200,
+            json={"routes": [{"duration": "150s", "staticDuration": "100s"}]},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    settings = Settings(
+        google_maps_api_key=SecretStr("test"),
+        google_routes_daily_budget=1,
+        google_routes_monthly_budget=1,
+    )
+    estimator = RoadTrafficEstimator(settings, client)
+    departure = datetime.now(ZoneInfo("Asia/Jakarta"))
+
+    first = await estimator.enrich_segments([_segment()], departure)
+    second = await estimator.enrich_segments([_segment()], departure)
+    await client.aclose()
+
+    assert calls == 1
+    assert first[0].traffic_source is TrafficSource.LIVE_GOOGLE
+    assert second[0].traffic_source is TrafficSource.LIVE_GOOGLE

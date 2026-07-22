@@ -122,10 +122,14 @@ class PedestrianRouter:
         return [result for result in results if result is not None]
 
     async def enrich_segment(self, segment: Segment) -> Segment:
-        if not self.enabled or segment.mode not in {
+        if (
+            segment.walking_route_source is WalkingRouteSource.CURATED
+            or not self.enabled
+            or segment.mode not in {
             TransportMode.WALK,
             TransportMode.RIDE_HAIL,
-        }:
+            }
+        ):
             return segment
         start = segment.coordinates[0]
         end = segment.coordinates[-1]

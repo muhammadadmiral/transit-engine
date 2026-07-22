@@ -153,7 +153,7 @@ def _fare_rides(segments: list[Segment]) -> list[list[Segment]]:
     current_product: str | None = None
     current_fallback_route: str | None = None
     for segment in segments:
-        if segment.mode is TransportMode.WALK:
+        if segment.mode is TransportMode.WALK and segment.access_action is None:
             continue
         product = segment.fare_product_id
         same_ride = (

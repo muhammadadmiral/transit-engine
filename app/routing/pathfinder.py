@@ -222,7 +222,7 @@ def find_route(
         if cost != distances.get(state):
             continue
         stop_id, previous_route_id, previous_product, transfers = state
-        if stop_id == destination_stop_id and previous_route_id is not None:
+        if stop_id == destination_stop_id and state != source:
             best_destination = state
             break
 

@@ -91,7 +91,15 @@ def test_bikun_routes_have_no_orphan_stops_and_are_free() -> None:
         for segment in dataset.segments
         for stop_id in (segment.from_stop_id, segment.to_stop_id)
     }
-    assert len(dataset.stops) == 10
-    assert len(dataset.segments) == 20
+    assert len(dataset.stops) == 19
+    assert len(dataset.segments) == 35
     assert {stop.id for stop in dataset.stops} == referenced
     assert all(segment.fare == 0 for segment in dataset.segments)
+    teknik_to_vokasi = next(
+        segment
+        for segment in dataset.segments
+        if segment.route_id == "bikun:blue"
+        and segment.from_stop_id == "bikun:teknik"
+        and segment.to_stop_id == "bikun:vokasi"
+    )
+    assert len(teknik_to_vokasi.coordinates) > 2

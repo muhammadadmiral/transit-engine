@@ -33,11 +33,14 @@ from app.routing.pedestrian import PedestrianMeasure, get_pedestrian_router
 from app.routing.schedule_cache import get_schedule_index
 from app.routing.stop_directory import build_stop_directory
 from app.routing.traffic import get_traffic_estimator
+from app.routing.transfers import nearby_endpoint_access_nodes
 from app.routing.weather import get_weather_estimator
 
 router = APIRouter(prefix="/route-search", tags=["route-search"])
 _routing_slots = asyncio.Semaphore(max(1, get_settings().routing_max_concurrency))
 WALKING_DETOUR_FACTOR = 1.25
+UI_STATION_COORDINATE = (-6.3605313, 106.8317755)
+UI_TRACK_BARRIER_LNG = 106.83190
 
 
 async def _routing_slot():
@@ -261,6 +264,9 @@ def _collapse_contiguous_rides(segments: list[Segment]) -> list[Segment]:
             joins_previous
             and segment.mode is TransportMode.WALK
             and collapsed[-1].mode is TransportMode.WALK
+            and collapsed[-1].route_id == segment.route_id
+            and collapsed[-1].access_action is None
+            and segment.access_action is None
         )
         same_vehicle = bool(
             joins_previous
@@ -451,10 +457,24 @@ async def _resolve_endpoint(
         radius_meters=request.access_radius_meters,
         can_board=is_origin,
     )
+    access_candidates = nearby_endpoint_access_nodes(
+        graph,
+        lat=lat,
+        lng=lng,
+        radius_meters=request.access_radius_meters,
+    )
     candidates = sorted(
-        [*fixed_candidates, *flexible_candidates],
+        [*fixed_candidates, *flexible_candidates, *access_candidates],
         key=lambda candidate: candidate.distance_meters,
     )
+    if _is_east_of_ui_station(lat, lng):
+        # The rail line is a real pedestrian barrier. Entering through a stop
+        # centroid would bypass the modeled gate/tap path.
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.lng > UI_TRACK_BARRIER_LNG
+        ]
     candidates = _shortlist_access_candidates(candidates)
     measures = await get_pedestrian_router().measure_distances(
         (lng, lat), [(candidate.lng, candidate.lat) for candidate in candidates]
@@ -620,3 +640,13 @@ def _shortlist_access_candidates(candidates: list[NearbyStop]) -> list[NearbySto
     selected = [candidate for bucket in fixed_by_mode.values() for candidate in bucket]
     selected.extend(flexible[:24])
     return sorted(selected, key=lambda candidate: candidate.distance_meters)[:48]
+
+
+def _is_east_of_ui_station(lat: float, lng: float) -> bool:
+    return (
+        lng > 106.83195
+        and _geometry_distance_meters(
+            [(UI_STATION_COORDINATE[1], UI_STATION_COORDINATE[0]), (lng, lat)]
+        )
+        <= 1500
+    )

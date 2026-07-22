@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     tomtom_traffic_url: str = (
         "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
     )
+    google_maps_api_key: SecretStr = SecretStr("")
+    google_routes_url: str = "https://routes.googleapis.com/directions/v2:computeRoutes"
+    google_routes_daily_budget: int = 100
+    google_routes_monthly_budget: int = 2000
     traffic_timeout_seconds: float = 2.5
     traffic_cache_ttl_seconds: int = 300
     weather_url: str = "https://api.open-meteo.com/v1/forecast"
@@ -65,6 +69,10 @@ class Settings(BaseSettings):
         return (
             self.tomtom_api_key.get_secret_value() or self.tomtom_traffic_api_key.get_secret_value()
         )
+
+    @property
+    def effective_google_maps_api_key(self) -> str:
+        return self.google_maps_api_key.get_secret_value()
 
 
 @lru_cache

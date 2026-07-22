@@ -6,11 +6,14 @@ from math import floor
 import networkx as nx
 
 from app.models.schema import (
+    AccessAction,
     DataConfidence,
+    NearbyStop,
     Segment,
     ServiceCategory,
     Stop,
     TransportMode,
+    WalkingRouteSource,
 )
 
 GRID_DEGREES = 0.0025
@@ -23,6 +26,21 @@ EXPLICIT_TRANSFERS = (
     ("mrt:dukuh-atas", "lrt-jabodebek:dukuh-atas"),
     ("krl:universitas-indonesia", "bikun:stasiun-ui"),
 )
+
+UI_KRL_STOP_ID = "krl:universitas-indonesia"
+UI_EAST_GATE_ID = "access:stasiun-ui:gate-margonda"
+UI_EAST_GATE = (-6.3613005, 106.8320277)
+UI_TRACK_BARRIER_LNG = 106.83190
+UI_PAID_CROSSING_GEOMETRY = [
+    (106.8317755, -6.3605313),
+    (106.8317569, -6.3609118),
+    (106.8317882, -6.3611351),
+    (106.8318153, -6.3613236),
+    (106.8318384, -6.3613206),
+    (106.8318118, -6.3611256),
+    (106.8319930, -6.3611038),
+    (106.8320277, -6.3613005),
+]
 
 
 def add_sparse_fixed_transfers(graph: nx.MultiDiGraph, stops: list[Stop]) -> None:
@@ -40,10 +58,11 @@ def add_sparse_fixed_transfers(graph: nx.MultiDiGraph, stops: list[Stop]) -> Non
             flexible=False,
         )
 
-    pairs: set[tuple[str, str]] = set()
+    explicit_pairs: set[tuple[str, str]] = set()
     for first_id, second_id in EXPLICIT_TRANSFERS:
         if first_id in stop_by_id and second_id in stop_by_id:
-            pairs.add(tuple(sorted((first_id, second_id))))
+            explicit_pairs.add(tuple(sorted((first_id, second_id))))
+    pairs = set(explicit_pairs)
 
     selections: dict[str, dict[TransportMode, Stop]] = {}
     for stop in stops:
@@ -82,7 +101,133 @@ def add_sparse_fixed_transfers(graph: nx.MultiDiGraph, stops: list[Stop]) -> Non
             (first.lat, first.lng),
             (second.lat, second.lng),
             f"fixed:{first_id}:{second_id}",
+            curated=(first_id, second_id) in explicit_pairs,
         )
+
+
+def add_curated_access_paths(graph: nx.MultiDiGraph) -> None:
+    """Add paid-area station paths that generic street routers cannot model."""
+    if UI_KRL_STOP_ID not in graph:
+        return
+    _prune_ui_barrier_shortcuts(graph)
+    graph.add_node(
+        UI_EAST_GATE_ID,
+        lat=UI_EAST_GATE[0],
+        lng=UI_EAST_GATE[1],
+        name="Pintu Margonda / Jalan Pepaya Stasiun UI",
+        mode=TransportMode.WALK.value,
+        flexible=False,
+        endpoint_access=True,
+    )
+    distance = _geometry_distance_meters(UI_PAID_CROSSING_GEOMETRY)
+    for suffix, from_id, to_id, coordinates, instruction in (
+        (
+            "east",
+            UI_KRL_STOP_ID,
+            UI_EAST_GATE_ID,
+            UI_PAID_CROSSING_GEOMETRY,
+            "Tap masuk Stasiun UI, menyeberang melalui area peron, lalu tap keluar "
+            "di pintu Margonda/Jalan Pepaya.",
+        ),
+        (
+            "west",
+            UI_EAST_GATE_ID,
+            UI_KRL_STOP_ID,
+            list(reversed(UI_PAID_CROSSING_GEOMETRY)),
+            "Tap masuk dari pintu Margonda/Jalan Pepaya, menyeberang melalui area "
+            "peron, lalu tap keluar ke sisi kampus UI.",
+        ),
+    ):
+        segment = Segment(
+            id=f"station-access:ui:{suffix}",
+            route_id="station-access:ui-paid-crossing",
+            route_code="GATE",
+            route_name="Penyeberangan berbayar Stasiun UI",
+            from_stop_id=from_id,
+            to_stop_id=to_id,
+            mode=TransportMode.WALK,
+            service_category=ServiceCategory.TRANSFER,
+            service_name="Penyeberangan berbayar Stasiun UI",
+            avg_duration_min=3.5,
+            fare=3000,
+            fare_product_id="krl:station-crossing",
+            data_confidence=DataConfidence.COMMUNITY,
+            last_verified_at=date(2026, 7, 22),
+            color="A78BFA",
+            coordinates=coordinates,
+            from_stop_name=str(graph.nodes[from_id].get("name") or from_id),
+            to_stop_name=str(graph.nodes[to_id].get("name") or to_id),
+            from_stop_lat=coordinates[0][1],
+            from_stop_lng=coordinates[0][0],
+            to_stop_lat=coordinates[-1][1],
+            to_stop_lng=coordinates[-1][0],
+            walking_distance_meters=distance,
+            distance_meters=distance,
+            walking_route_source=WalkingRouteSource.CURATED,
+            access_action=AccessAction.PAID_STATION_CROSSING,
+            instruction=instruction,
+        )
+        graph.add_edge(from_id, to_id, key=segment.id, segment=segment)
+
+
+def _prune_ui_barrier_shortcuts(graph: nx.MultiDiGraph) -> None:
+    """Force east/west walking across the railway through the reviewed gate edge."""
+    west_nodes = {UI_KRL_STOP_ID, "bikun:stasiun-ui"}
+    removals: set[tuple[str, str, str]] = set()
+    for node_id in west_nodes:
+        if node_id not in graph:
+            continue
+        for source, target, key, data in graph.out_edges(node_id, keys=True, data=True):
+            segment = data.get("segment")
+            target_lng = graph.nodes[target].get("lng")
+            if (
+                segment is not None
+                and segment.mode is TransportMode.WALK
+                and target != UI_EAST_GATE_ID
+                and target_lng is not None
+                and float(target_lng) > UI_TRACK_BARRIER_LNG
+            ):
+                removals.add((source, target, key))
+        for source, target, key, data in graph.in_edges(node_id, keys=True, data=True):
+            segment = data.get("segment")
+            source_lng = graph.nodes[source].get("lng")
+            if (
+                segment is not None
+                and segment.mode is TransportMode.WALK
+                and source != UI_EAST_GATE_ID
+                and source_lng is not None
+                and float(source_lng) > UI_TRACK_BARRIER_LNG
+            ):
+                removals.add((source, target, key))
+    graph.remove_edges_from(removals)
+
+
+def nearby_endpoint_access_nodes(
+    graph: nx.MultiDiGraph,
+    *,
+    lat: float,
+    lng: float,
+    radius_meters: int,
+) -> list[NearbyStop]:
+    result = []
+    for node_id, data in graph.nodes(data=True):
+        if not data.get("endpoint_access"):
+            continue
+        distance = distance_meters(lat, lng, float(data["lat"]), float(data["lng"]))
+        if distance <= radius_meters:
+            result.append(
+                NearbyStop(
+                    id=node_id,
+                    name=str(data["name"]),
+                    lat=float(data["lat"]),
+                    lng=float(data["lng"]),
+                    modes=[TransportMode.WALK],
+                    distance_meters=distance,
+                    can_board=True,
+                    can_alight=True,
+                )
+            )
+    return sorted(result, key=lambda item: item.distance_meters)
 
 
 def add_walking_pair(
@@ -92,6 +237,8 @@ def add_walking_pair(
     first: tuple[float, float],
     second: tuple[float, float],
     identity: str,
+    *,
+    curated: bool = False,
 ) -> None:
     distance = distance_meters(first[0], first[1], second[0], second[1])
     duration = max(1.0, distance / 75 + 1)
@@ -127,6 +274,9 @@ def add_walking_pair(
             from_stop_lng=from_point[1],
             to_stop_lat=to_point[0],
             to_stop_lng=to_point[1],
+            walking_distance_meters=distance if curated else None,
+            distance_meters=distance if curated else None,
+            walking_route_source=WalkingRouteSource.CURATED if curated else None,
         )
         graph.add_edge(from_id, to_id, key=segment.id, segment=segment)
 
@@ -140,6 +290,13 @@ def distance_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float
         cos(radians(lat1)) * cos(radians(lat2)) * sin(delta_lng / 2) ** 2
     )
     return 2 * 6_371_008.8 * asin(sqrt(value))
+
+
+def _geometry_distance_meters(coordinates: list[tuple[float, float]]) -> float:
+    return sum(
+        distance_meters(first[1], first[0], second[1], second[0])
+        for first, second in zip(coordinates, coordinates[1:], strict=False)
+    )
 
 
 def _transfer_radius(

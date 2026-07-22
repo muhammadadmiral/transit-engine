@@ -52,6 +52,11 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             source_url=KRL_FARE_SOURCE_URL,
         ),
         FlatFareRule(
+            product_id="krl:station-crossing",
+            amount=3000,
+            source_url=KRL_FARE_SOURCE_URL,
+        ),
+        FlatFareRule(
             product_id="bikun:regular",
             amount=0,
             source_url="https://ui.ac.id",
