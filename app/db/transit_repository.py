@@ -14,6 +14,7 @@ from app.models.schema import (
     Segment,
     Stop,
     TransportMode,
+    WalkingRouteSource,
 )
 
 
@@ -58,6 +59,10 @@ def segment_from_record(record: SegmentRecord, geometry_json: str) -> Segment:
         last_verified_at=record.last_verified_at,
         color=record.color,
         coordinates=[tuple(point) for point in geometry["coordinates"]],
+        walking_distance_meters=record.walking_distance_meters,
+        walking_route_source=(
+            WalkingRouteSource(record.walking_route_source) if record.walking_route_source else None
+        ),
     )
 
 

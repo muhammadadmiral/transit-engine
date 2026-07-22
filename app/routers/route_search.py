@@ -17,8 +17,10 @@ from app.models.schema import (
     ServiceCategory,
     TransportMode,
 )
+from app.routing.geojson_builder import build_feature_collection
 from app.routing.graph_cache import get_routing_graph
 from app.routing.pathfinder import RouteNotFoundError, find_route_options
+from app.routing.pedestrian import get_pedestrian_router
 from app.routing.stop_directory import build_stop_directory
 
 router = APIRouter(prefix="/route-search", tags=["route-search"])
@@ -59,6 +61,13 @@ async def route_search(
         )
     except RouteNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+    pedestrian_router = get_pedestrian_router()
+    for option in options:
+        option.segments = await pedestrian_router.enrich_segments(option.segments)
+        option.total_duration_min = sum(segment.avg_duration_min for segment in option.segments)
+        option.geojson = build_feature_collection(option.segments)
+
     try:
         referenced_stop_ids: set[str] = set()
         for option in options:

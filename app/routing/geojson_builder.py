@@ -20,6 +20,10 @@ def build_feature_collection(segments: list[Segment]) -> FeatureCollection:
                 "fareProductId": segment.fare_product_id,
                 "dataConfidence": segment.data_confidence.value,
                 "lastVerifiedAt": segment.last_verified_at.isoformat(),
+                "walkingDistanceMeters": segment.walking_distance_meters,
+                "walkingRouteSource": (
+                    segment.walking_route_source.value if segment.walking_route_source else None
+                ),
             },
         )
         for segment in segments

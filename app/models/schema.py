@@ -44,6 +44,11 @@ class DataConfidence(StrEnum):
     COMMUNITY = "community"
 
 
+class WalkingRouteSource(StrEnum):
+    FALLBACK = "fallback"
+    VALHALLA = "valhalla"
+
+
 class ServiceCategory(StrEnum):
     MAIN = "main"
     FEEDER = "feeder"
@@ -131,6 +136,8 @@ class Segment(SchemaModel):
     from_stop_lng: float | None = None
     to_stop_lat: float | None = None
     to_stop_lng: float | None = None
+    walking_distance_meters: float | None = Field(default=None, ge=0)
+    walking_route_source: WalkingRouteSource | None = None
 
     @model_validator(mode="after")
     def fill_route_display_fields(self) -> "Segment":

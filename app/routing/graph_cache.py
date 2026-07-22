@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.transit_repository import load_segments
 from app.routing.graph import build_graph
+from app.routing.pedestrian import invalidate_pedestrian_cache
 
 GRAPH_CACHE_TTL_SECONDS = 300
 
@@ -37,3 +38,4 @@ def invalidate_graph_cache() -> None:
 
     _cached_graph = None
     _cached_at = 0.0
+    invalidate_pedestrian_cache()

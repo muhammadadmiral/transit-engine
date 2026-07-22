@@ -1,6 +1,7 @@
 """Explicit and name-validated walking connectors between supported transit modes."""
 
 import hashlib
+import logging
 import re
 import unicodedata
 from datetime import date
@@ -17,6 +18,9 @@ from app.models.schema import (
     ServiceCategory,
     TransportMode,
 )
+from app.routing.pedestrian import PedestrianRouter, get_pedestrian_router
+
+logger = logging.getLogger(__name__)
 
 VERIFIED_AT = date(2026, 7, 20)
 MAX_NAMED_TRANSFER_METERS = 350
@@ -52,7 +56,11 @@ TRANSJAKARTA_ALIASES = {
 }
 
 
-async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
+async def build_transfer_segments(
+    session: AsyncSession,
+    *,
+    pedestrian_router: PedestrianRouter | None = None,
+) -> list[Segment]:
     rows = (
         await session.execute(
             select(
@@ -120,11 +128,25 @@ async def build_transfer_segments(session: AsyncSession) -> list[Segment]:
             ):
                 pairs.add(tuple(sorted((first_id, second_id))))
 
-    return [
+    segments = [
         segment
         for first_id, second_id in sorted(pairs)
         for segment in _walking_pair(first_id, second_id, stops[first_id], stops[second_id])
     ]
+    router = pedestrian_router or (get_pedestrian_router() if _has_enabled_router() else None)
+    if router is not None:
+        try:
+            segments = await router.enrich_segments(segments)
+        except Exception:
+            logger.warning("Pedestrian enrichment failed during ingestion; keeping fallback")
+    return segments
+
+
+def _has_enabled_router() -> bool:
+    try:
+        return bool(get_pedestrian_router().enabled)
+    except Exception:
+        return False
 
 
 def _supports_spatial_transfer(

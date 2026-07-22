@@ -35,3 +35,5 @@ class SegmentRecord(Base):
     last_verified_at: Mapped[date] = mapped_column(Date, nullable=False)
     color: Mapped[str] = mapped_column(String(6), nullable=False)
     geometry: Mapped[object] = mapped_column(Geometry("LINESTRING", srid=4326), nullable=False)
+    walking_distance_meters: Mapped[float | None] = mapped_column(Float, nullable=True)
+    walking_route_source: Mapped[str | None] = mapped_column(String(16), nullable=True)

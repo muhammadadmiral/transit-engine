@@ -70,6 +70,10 @@ async def insert_segments(session: AsyncSession, segments: list[Segment]) -> Non
             "data_confidence": segment.data_confidence.value,
             "last_verified_at": segment.last_verified_at,
             "color": segment.color,
+            "walking_distance_meters": segment.walking_distance_meters,
+            "walking_route_source": (
+                segment.walking_route_source.value if segment.walking_route_source else None
+            ),
             "geometry": WKTElement(
                 "LINESTRING(" + ", ".join(f"{lng} {lat}" for lng, lat in segment.coordinates) + ")",
                 srid=4326,
