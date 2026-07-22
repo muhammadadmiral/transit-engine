@@ -20,7 +20,7 @@ from app.routing.geojson_builder import build_feature_collection
 from app.routing.schedules import ServiceFrequencyIndex, apply_scheduled_waits
 from app.routing.stop_directory import StopSummary
 from app.routing.traffic import historical_traffic_factor
-from app.routing.weights import duration_cost, transfer_penalty
+from app.routing.weights import WALKING_RELUCTANCE, duration_cost, transfer_penalty
 
 
 class RouteNotFoundError(ValueError):
@@ -173,18 +173,24 @@ def find_route(
                 # Lanjutan produk tarif yang sama: gratis secara tarif, tapi
                 # durasinya tetap dihargai agar rute tidak memutar.
                 return (
-                    duration_cost(segment) * historical_traffic_factor(segment, departure_at)
+                    duration_cost(segment)
+                    * _mode_reluctance(segment)
+                    * historical_traffic_factor(segment, departure_at)
                     + wait * 50
                     + penalty
                 )
             return (
                 boarding_cost(segment)
-                + duration_cost(segment) * historical_traffic_factor(segment, departure_at)
+                + duration_cost(segment)
+                * _mode_reluctance(segment)
+                * historical_traffic_factor(segment, departure_at)
                 + wait * 50
                 + penalty
             )
         return (
-            segment.avg_duration_min * historical_traffic_factor(segment, departure_at)
+            segment.avg_duration_min
+            * _mode_reluctance(segment)
+            * historical_traffic_factor(segment, departure_at)
             + wait
             + float(segment.fare) * 0.000001
             + penalty
@@ -298,6 +304,10 @@ def find_route(
 def _fare_identity(segment: Segment) -> str:
     product = segment.fare_product_id or f"legacy:{segment.route_id}"
     return f"{product}:{segment.route_id}" if segment.mode is TransportMode.ANGKOT else product
+
+
+def _mode_reluctance(segment: Segment) -> float:
+    return WALKING_RELUCTANCE if segment.mode is TransportMode.WALK else 1.0
 
 
 def _reverse_reachable(

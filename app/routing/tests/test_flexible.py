@@ -66,3 +66,54 @@ def test_resample_does_not_turn_dense_gis_vertices_into_graph_nodes() -> None:
     assert 6 <= len(sampled) <= 8
     assert sampled[0] == dense[0]
     assert sampled[-1] == dense[-1]
+
+
+def test_parallel_corridors_get_sparse_interchanges_instead_of_a_clique() -> None:
+    first = route()
+    second = first.model_copy(
+        update={
+            "id": "angkot:test-2:outbound",
+            "route_code": "T02",
+            "coordinates": [(106.8, -6.2002), (106.81, -6.2002)],
+        }
+    )
+    graph = build_graph(materialize_flexible_segments([first, second]))
+
+    add_flexible_transfers(graph, [])
+
+    interchange_edges = [
+        data["segment"]
+        for _, _, data in graph.edges(data=True)
+        if data["segment"].id.startswith("flex-flex:")
+    ]
+    assert 2 <= len(interchange_edges) <= 6
+
+
+def test_winding_corridor_connects_once_to_the_same_fixed_stop() -> None:
+    winding = route().model_copy(
+        update={
+            "coordinates": [
+                (106.8, -6.2),
+                (106.805, -6.2),
+                (106.805, -6.2002),
+                (106.8, -6.2002),
+            ]
+        }
+    )
+    graph = build_graph(materialize_flexible_segments([winding]))
+    fixed = Stop(
+        id="jaklingko:test",
+        name="Test roadside stop",
+        lat=-6.2001,
+        lng=106.8025,
+        modes=[TransportMode.JAKLINGKO],
+    )
+
+    add_flexible_transfers(graph, [fixed])
+
+    connections = [
+        segment
+        for _, _, segment in graph.edges(data="segment")
+        if segment.id.startswith("flex-fixed:")
+    ]
+    assert len(connections) == 2

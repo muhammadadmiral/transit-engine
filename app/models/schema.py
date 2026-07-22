@@ -48,6 +48,7 @@ class DataConfidence(StrEnum):
 
 class WalkingRouteSource(StrEnum):
     FALLBACK = "fallback"
+    TOMTOM = "tomtom"
     VALHALLA = "valhalla"
 
 
@@ -250,11 +251,13 @@ class RouteListResponse(SchemaModel):
 class RouteSearchRequest(SchemaModel):
     origin_stop_id: str | None = Field(default=None, min_length=1, max_length=120)
     destination_stop_id: str | None = Field(default=None, min_length=1, max_length=120)
+    origin_label: str | None = Field(default=None, min_length=1, max_length=255)
+    destination_label: str | None = Field(default=None, min_length=1, max_length=255)
     origin_lat: Annotated[float | None, Field(default=None, ge=-90, le=90)]
     origin_lng: Annotated[float | None, Field(default=None, ge=-180, le=180)]
     destination_lat: Annotated[float | None, Field(default=None, ge=-90, le=90)]
     destination_lng: Annotated[float | None, Field(default=None, ge=-180, le=180)]
-    access_radius_meters: Annotated[int, Field(ge=100, le=5000)] = 1500
+    access_radius_meters: Annotated[int, Field(ge=100, le=5000)] = 750
     allow_ride_hail: bool = True
     ride_hail_radius_meters: Annotated[int, Field(ge=1000, le=15000)] = 8000
     max_transfers: Annotated[int, Field(ge=0, le=5)] = 5

@@ -1,4 +1,4 @@
-"""Short-lived in-process graph cache rebuilt from persistent Supabase data."""
+"""In-process graph cache rebuilt explicitly after persistent data refreshes."""
 
 import asyncio
 

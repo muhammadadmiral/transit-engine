@@ -7,6 +7,10 @@ from app.models.schema import SearchCriteria, Segment
 # - FARE_EPSILON: Rp1000 ~ 0.001 menit. Durasi tetap dominan untuk fastest.
 FARE_EPSILON = 0.000001
 FASTEST_TRANSFER_PENALTY_MINUTES = 8.0
+# Walking feels materially more onerous than in-vehicle time. Transit planners
+# commonly model that with a reluctance multiplier; without it, a 15-minute
+# walk can incorrectly beat a nearby feeder plus a short transfer.
+WALKING_RELUCTANCE = 1.8
 
 # "Termurah" memakai generalized cost: tarif + durasi x nilai waktu.
 # Tanpa ini, menghemat Rp3.000 bisa "membenarkan" perjalanan memutar

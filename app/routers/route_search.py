@@ -30,6 +30,7 @@ from app.routing.traffic import get_traffic_estimator
 
 router = APIRouter(prefix="/route-search", tags=["route-search"])
 _routing_slots = asyncio.Semaphore(max(1, get_settings().routing_max_concurrency))
+WALKING_DETOUR_FACTOR = 1.25
 
 
 async def _routing_slot():
@@ -114,6 +115,8 @@ async def route_search(
     except (SQLAlchemyError, OSError, AttributeError):
         # Test doubles or DB unavailable — keep raw IDs so response stays valid.
         directory = None
+    for option in options:
+        option.segments = _label_flexible_points(option.segments)
     return RouteSearchResponse(
         origin_stop_id=origin_stop_id,
         destination_stop_id=destination_stop_id,
@@ -122,15 +125,23 @@ async def route_search(
 
 
 def _collapse_contiguous_rides(segments: list[Segment]) -> list[Segment]:
-    """Expose one leg per vehicle while retaining the full map geometry."""
+    """Expose one leg per vehicle or continuous walk with complete geometry."""
     collapsed: list[Segment] = []
     for segment in segments:
-        if (
-            collapsed
+        joins_previous = bool(collapsed and collapsed[-1].to_stop_id == segment.from_stop_id)
+        same_walk = bool(
+            joins_previous
+            and segment.mode is TransportMode.WALK
+            and collapsed[-1].mode is TransportMode.WALK
+        )
+        same_vehicle = bool(
+            joins_previous
             and segment.mode is not TransportMode.WALK
             and collapsed[-1].mode is not TransportMode.WALK
             and collapsed[-1].route_id == segment.route_id
-            and collapsed[-1].to_stop_id == segment.from_stop_id
+        )
+        if (
+            same_walk or same_vehicle
         ):
             previous = collapsed[-1]
             coordinates = [*previous.coordinates]
@@ -154,6 +165,43 @@ def _collapse_contiguous_rides(segments: list[Segment]) -> list[Segment]:
     return collapsed
 
 
+def _label_flexible_points(segments: list[Segment]) -> list[Segment]:
+    """Name hail-and-ride points after an adjacent real stop or user place."""
+    names: dict[str, str] = {}
+    for segment in segments:
+        if _is_specific_place(segment.from_stop_name):
+            names[segment.from_stop_id] = segment.from_stop_name
+        if _is_specific_place(segment.to_stop_name):
+            names[segment.to_stop_id] = segment.to_stop_name
+
+    for segment in segments:
+        if segment.mode is not TransportMode.WALK:
+            continue
+        from_name = names.get(segment.from_stop_id)
+        to_name = names.get(segment.to_stop_id)
+        if segment.from_stop_id.startswith("flex:") and to_name:
+            names[segment.from_stop_id] = f"Dekat {to_name}"
+        if segment.to_stop_id.startswith("flex:") and from_name:
+            names[segment.to_stop_id] = f"Dekat {from_name}"
+
+    return [
+        segment.model_copy(
+            update={
+                "from_stop_name": names.get(segment.from_stop_id, segment.from_stop_name),
+                "to_stop_name": names.get(segment.to_stop_id, segment.to_stop_name),
+            }
+        )
+        for segment in segments
+    ]
+
+
+def _is_specific_place(name: str) -> bool:
+    cleaned = name.strip().casefold()
+    return bool(cleaned) and cleaned not in {"titik di peta", "lokasi awal", "tujuan"} and not (
+        cleaned.startswith("koridor ")
+    )
+
+
 async def _resolve_endpoint(
     session: AsyncSession,
     request: RouteSearchRequest,
@@ -168,6 +216,7 @@ async def _resolve_endpoint(
 
     lat = request.origin_lat if is_origin else request.destination_lat
     lng = request.origin_lng if is_origin else request.destination_lng
+    pin_label = request.origin_label if is_origin else request.destination_label
     assert lat is not None and lng is not None  # validated by RouteSearchRequest
     fixed_candidates = await find_nearby_stops(
         session,
@@ -234,6 +283,7 @@ async def _resolve_endpoint(
             stop=stop,
             is_origin=is_origin,
             use_ride_hail=use_ride_hail,
+            pin_label=pin_label,
         )
         for stop in candidates
     ]
@@ -247,6 +297,7 @@ def _access_segment(
     stop: NearbyStop,
     is_origin: bool,
     use_ride_hail: bool = False,
+    pin_label: str | None = None,
 ) -> Segment:
     from_stop_id, to_stop_id = (virtual_id, stop.id) if is_origin else (stop.id, virtual_id)
     coordinates = (
@@ -261,7 +312,7 @@ def _access_segment(
     duration = (
         max(3.0, stop.distance_meters / (25_000 / 60))
         if use_ride_hail
-        else max(0.5, stop.distance_meters / 75)
+        else max(0.5, stop.distance_meters * WALKING_DETOUR_FACTOR / 75)
     )
     return Segment(
         id=f"access:{'origin' if is_origin else 'destination'}:{stop.id}",
@@ -280,8 +331,8 @@ def _access_segment(
         last_verified_at=date.today(),
         color="64748B",
         coordinates=coordinates,
-        from_stop_name="Titik di peta" if is_origin else stop.name,
-        to_stop_name=stop.name if is_origin else "Titik di peta",
+        from_stop_name=(pin_label or "Lokasi awal") if is_origin else stop.name,
+        to_stop_name=stop.name if is_origin else (pin_label or "Tujuan"),
         from_stop_lat=pin_lat if is_origin else stop.lat,
         from_stop_lng=pin_lng if is_origin else stop.lng,
         to_stop_lat=stop.lat if is_origin else pin_lat,

@@ -1,4 +1,4 @@
-"""Optional Valhalla-compatible pedestrian geometry enrichment.
+"""Bounded TomTom/Valhalla pedestrian geometry enrichment.
 
 Routing remains usable when the pedestrian service is disabled, saturated, slow, or
 unavailable: callers always receive the original straight-line walking segment.
@@ -28,10 +28,11 @@ class PedestrianRoute:
     coordinates: list[Coordinate]
     duration_min: float
     distance_meters: float
+    source: WalkingRouteSource = WalkingRouteSource.VALHALLA
 
 
 class PedestrianRouter:
-    """Bounded, TTL-cached adapter for Valhalla's ``/route`` API."""
+    """Bounded, TTL-cached pedestrian router with a free OSM fallback."""
 
     def __init__(
         self,
@@ -42,6 +43,8 @@ class PedestrianRouter:
         cache_ttl_seconds: int = 900,
         cache_max_entries: int = 512,
         max_distance_meters: int = 5000,
+        tomtom_api_key: str = "",
+        tomtom_base_url: str = "https://api.tomtom.com/routing/1",
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -49,6 +52,8 @@ class PedestrianRouter:
         self.cache_ttl_seconds = cache_ttl_seconds
         self.cache_max_entries = cache_max_entries
         self.max_distance_meters = max_distance_meters
+        self.tomtom_api_key = tomtom_api_key
+        self.tomtom_base_url = tomtom_base_url.rstrip("/")
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._cache: OrderedDict[tuple[Coordinate, Coordinate], tuple[float, PedestrianRoute]] = (
             OrderedDict()
@@ -57,7 +62,7 @@ class PedestrianRouter:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.base_url)
+        return bool(self.tomtom_api_key or self.base_url)
 
     def clear_cache(self) -> None:
         self._cache.clear()
@@ -88,6 +93,18 @@ class PedestrianRouter:
         return list(await asyncio.gather(*(self.enrich_segment(segment) for segment in segments)))
 
     async def _request_route(self, start: Coordinate, end: Coordinate) -> PedestrianRoute:
+        if self.tomtom_api_key:
+            try:
+                return await self._request_tomtom_route(start, end)
+            except (TimeoutError, httpx.HTTPError, KeyError, TypeError, ValueError, IndexError):
+                if not self.base_url:
+                    raise
+                logger.warning("TomTom pedestrian routing unavailable; trying Valhalla")
+        return await self._request_valhalla_route(start, end)
+
+    async def _request_valhalla_route(
+        self, start: Coordinate, end: Coordinate
+    ) -> PedestrianRoute:
         payload = {
             "locations": [
                 {"lat": start[1], "lon": start[0], "type": "break"},
@@ -119,7 +136,46 @@ class PedestrianRouter:
             raise ValueError("Pedestrian route was empty")
         if distance_meters > self.max_distance_meters:
             raise ValueError("Pedestrian route exceeded configured bound")
-        return PedestrianRoute(coordinates, duration_min, distance_meters)
+        return PedestrianRoute(
+            coordinates, duration_min, distance_meters, WalkingRouteSource.VALHALLA
+        )
+
+    async def _request_tomtom_route(
+        self, start: Coordinate, end: Coordinate
+    ) -> PedestrianRoute:
+        path = f"{start[1]},{start[0]}:{end[1]},{end[0]}"
+        params = {
+            "key": self.tomtom_api_key,
+            "travelMode": "pedestrian",
+            "routeRepresentation": "polyline",
+            "computeTravelTimeFor": "all",
+            "language": "id-ID",
+        }
+        url = f"{self.tomtom_base_url}/calculateRoute/{path}/json"
+        if self._client is not None:
+            response = await self._client.get(url, params=params, timeout=self.timeout_seconds)
+        else:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=self.timeout_seconds)
+        response.raise_for_status()
+        route = response.json()["routes"][0]
+        coordinates: list[Coordinate] = []
+        for leg in route["legs"]:
+            decoded = [
+                (float(point["longitude"]), float(point["latitude"]))
+                for point in leg["points"]
+            ]
+            coordinates.extend(decoded if not coordinates else decoded[1:])
+        summary = route["summary"]
+        distance_meters = float(summary["lengthInMeters"])
+        duration_min = float(summary["travelTimeInSeconds"]) / 60
+        if len(coordinates) < 2 or distance_meters <= 0 or duration_min <= 0:
+            raise ValueError("Pedestrian route was empty")
+        if distance_meters > self.max_distance_meters:
+            raise ValueError("Pedestrian route exceeded configured bound")
+        return PedestrianRoute(
+            coordinates, duration_min, distance_meters, WalkingRouteSource.TOMTOM
+        )
 
     def _get_cached(self, key: tuple[Coordinate, Coordinate]) -> PedestrianRoute | None:
         entry = self._cache.get(key)
@@ -149,6 +205,8 @@ def get_pedestrian_router() -> PedestrianRouter:
         cache_ttl_seconds=settings.pedestrian_router_cache_ttl_seconds,
         cache_max_entries=settings.pedestrian_router_cache_max_entries,
         max_distance_meters=settings.pedestrian_router_max_distance_meters,
+        tomtom_api_key=settings.effective_tomtom_api_key,
+        tomtom_base_url=settings.tomtom_routing_url,
     )
 
 
@@ -185,7 +243,7 @@ def _apply_route(segment: Segment, route: PedestrianRoute) -> Segment:
             "coordinates": route.coordinates,
             "avg_duration_min": round(max(0.1, route.duration_min), 1),
             "walking_distance_meters": round(route.distance_meters),
-            "walking_route_source": WalkingRouteSource.VALHALLA,
+            "walking_route_source": route.source,
         }
     )
 

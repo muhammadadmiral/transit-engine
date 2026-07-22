@@ -7,9 +7,7 @@ from app.db.session import SessionLocal
 from app.db.transit_writer import (
     delete_legacy_angkot_graph,
     replace_flexible_routes,
-    replace_transfer_segments,
 )
-from app.ingestion.curated.transfers import build_transfer_segments
 from app.ingestion.osm.overpass import fetch_angkot_relations
 from app.ingestion.osm.parser import parse_osm_relations
 
@@ -35,7 +33,6 @@ async def import_osm_angkot() -> tuple[int, int]:
             route_id_prefix="angkot:osm:",
         )
         await delete_legacy_angkot_graph(session)
-        await replace_transfer_segments(session, await build_transfer_segments(session))
         await session.commit()
     return 0, len(routes)
 

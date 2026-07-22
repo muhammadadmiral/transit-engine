@@ -45,6 +45,7 @@ def add_sparse_fixed_transfers(graph: nx.MultiDiGraph, stops: list[Stop]) -> Non
         if first_id in stop_by_id and second_id in stop_by_id:
             pairs.add(tuple(sorted((first_id, second_id))))
 
+    selections: dict[str, dict[TransportMode, Stop]] = {}
     for stop in stops:
         own_mode = stop.modes[0]
         nearest_by_mode: dict[TransportMode, tuple[float, Stop]] = {}
@@ -59,8 +60,18 @@ def add_sparse_fixed_transfers(graph: nx.MultiDiGraph, stops: list[Stop]) -> Non
             current = nearest_by_mode.get(candidate_mode)
             if current is None or distance < current[0]:
                 nearest_by_mode[candidate_mode] = (distance, candidate)
-        for _, candidate in nearest_by_mode.values():
-            pairs.add(tuple(sorted((stop.id, candidate.id))))
+        selections[stop.id] = {
+            mode: candidate for mode, (_, candidate) in nearest_by_mode.items()
+        }
+
+    # Mutual nearest neighbours prevent one station from becoming a clique of
+    # every nearby directional stop while retaining the shortest interchange.
+    for stop in stops:
+        own_mode = stop.modes[0]
+        for candidate in selections[stop.id].values():
+            reciprocal = selections.get(candidate.id, {}).get(own_mode)
+            if reciprocal is not None and reciprocal.id == stop.id:
+                pairs.add(tuple(sorted((stop.id, candidate.id))))
 
     for first_id, second_id in pairs:
         first, second = stop_by_id[first_id], stop_by_id[second_id]
