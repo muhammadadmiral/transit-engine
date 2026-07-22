@@ -182,7 +182,9 @@ def test_live_network_layers_and_representative_multimodal_routes() -> None:
             for option in ui_to_gunadarma.json()["options"]
             for segment in option["segments"]
         }
-        assert ("bikun", "BLUE") in modes_and_codes
+        # The reviewed campus relation reaches the Stasiun UI side on the
+        # RED loop; the previous sparse fixture incorrectly expected BLUE.
+        assert ("bikun", "RED") in modes_and_codes
         assert ("angkot", "D11") in modes_and_codes
 
         ft_to_margonda_gate = client.post(
