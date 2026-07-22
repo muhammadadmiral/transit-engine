@@ -42,6 +42,17 @@ UI_PAID_CROSSING_GEOMETRY = [
     (106.8320277, -6.3613005),
 ]
 
+LA_KRL_STOP_ID = "krl:lenteng-agung"
+LA_EAST_GATE_ID = "access:stasiun-lenteng-agung:east"
+LA_EAST_GATE = (-6.3306245, 106.835150)
+LA_WEST_GATE_ID = "access:stasiun-lenteng-agung:west"
+LA_WEST_GATE = (-6.3306245, 106.834450)
+LA_CROSSING_GEOMETRY = [
+    (106.834450, -6.3306245),
+    (106.8348170, -6.3306245),
+    (106.835150, -6.3306245),
+]
+
 
 def add_sparse_fixed_transfers(graph: nx.MultiDiGraph, stops: list[Stop]) -> None:
     """Connect each stop only to its nearest useful stop in another mode."""
@@ -167,7 +178,112 @@ def add_curated_access_paths(graph: nx.MultiDiGraph) -> None:
             access_action=AccessAction.PAID_STATION_CROSSING,
             instruction=instruction,
         )
-        graph.add_edge(from_id, to_id, key=segment.id, segment=segment)
+        graph.add_edge(
+            segment.from_stop_id,
+            segment.to_stop_id,
+            key=segment.id,
+            segment=segment,
+        )
+
+    if LA_KRL_STOP_ID not in graph:
+        return
+
+    graph.add_node(
+        LA_EAST_GATE_ID,
+        lat=LA_EAST_GATE[0],
+        lng=LA_EAST_GATE[1],
+        name="Jalan Raya Lenteng Agung (Arah Depok)",
+        mode=TransportMode.WALK.value,
+        flexible=False,
+        endpoint_access=True,
+    )
+    graph.add_node(
+        LA_WEST_GATE_ID,
+        lat=LA_WEST_GATE[0],
+        lng=LA_WEST_GATE[1],
+        name="Jalan Raya Lenteng Agung (Arah Pasar Minggu)",
+        mode=TransportMode.WALK.value,
+        flexible=False,
+        endpoint_access=True,
+    )
+
+    for suffix, from_id, to_id, coordinates, instruction in (
+        (
+            "east",
+            LA_KRL_STOP_ID,
+            LA_EAST_GATE_ID,
+            LA_CROSSING_GEOMETRY[1:],
+            "Gunakan JPO Stasiun Lenteng Agung menuju sisi Timur (arah Depok).",
+        ),
+        (
+            "east-rev",
+            LA_EAST_GATE_ID,
+            LA_KRL_STOP_ID,
+            list(reversed(LA_CROSSING_GEOMETRY[1:])),
+            "Gunakan JPO masuk ke Stasiun Lenteng Agung.",
+        ),
+        (
+            "west",
+            LA_KRL_STOP_ID,
+            LA_WEST_GATE_ID,
+            list(reversed(LA_CROSSING_GEOMETRY[:2])),
+            "Gunakan JPO Stasiun Lenteng Agung menuju sisi Barat (arah Pasar Minggu).",
+        ),
+        (
+            "west-rev",
+            LA_WEST_GATE_ID,
+            LA_KRL_STOP_ID,
+            LA_CROSSING_GEOMETRY[:2],
+            "Gunakan JPO masuk ke Stasiun Lenteng Agung.",
+        ),
+        (
+            "cross-east",
+            LA_WEST_GATE_ID,
+            LA_EAST_GATE_ID,
+            LA_CROSSING_GEOMETRY,
+            "Gunakan JPO Tapal Kuda untuk menyeberang ke sisi arah Depok.",
+        ),
+        (
+            "cross-west",
+            LA_EAST_GATE_ID,
+            LA_WEST_GATE_ID,
+            list(reversed(LA_CROSSING_GEOMETRY)),
+            "Gunakan JPO Tapal Kuda untuk menyeberang ke sisi arah Pasar Minggu.",
+        ),
+    ):
+        segment = Segment(
+            id=f"station-access:la:{suffix}",
+            route_id="station-access:la-crossing",
+            route_code="JPO",
+            route_name="JPO Lenteng Agung",
+            from_stop_id=from_id,
+            to_stop_id=to_id,
+            mode=TransportMode.WALK,
+            service_category=ServiceCategory.TRANSFER,
+            service_name="JPO Lenteng Agung",
+            avg_duration_min=2.5,
+            fare=0,
+            fare_product_id=None,
+            data_confidence=DataConfidence.COMMUNITY,
+            last_verified_at=date(2026, 7, 22),
+            color="A78BFA",
+            coordinates=coordinates,
+            from_stop_name=str(graph.nodes[from_id].get("name") or from_id),
+            to_stop_name=str(graph.nodes[to_id].get("name") or to_id),
+            from_stop_lat=coordinates[0][1],
+            from_stop_lng=coordinates[0][0],
+            to_stop_lat=coordinates[-1][1],
+            to_stop_lng=coordinates[-1][0],
+            distance_meters=_geometry_distance_meters(coordinates),
+            instruction=instruction,
+            walking_route_source=WalkingRouteSource.CURATED,
+        )
+        graph.add_edge(
+            segment.from_stop_id,
+            segment.to_stop_id,
+            key=segment.id,
+            segment=segment,
+        )
 
 
 def _prune_ui_barrier_shortcuts(graph: nx.MultiDiGraph) -> None:

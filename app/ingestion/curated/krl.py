@@ -53,7 +53,7 @@ KRL_STATIONS = {
     "pasar-minggu": ("Pasar Minggu", -6.2837674, 106.8447574),
     "tanjung-barat": ("Tanjung Barat", -6.3096921, 106.8386475),
     "lenteng-agung": ("Lenteng Agung", -6.3306245, 106.8348170),
-    "universitas-pancasila": ("Universitas Pancasila", -6.3406626, 106.8339225),
+    "universitas-pancasila": ("Universitas Pancasila", -6.33583, 106.834167),
     "universitas-indonesia": ("Universitas Indonesia", -6.3605313, 106.8317755),
     "pondok-cina": ("Pondok Cina", -6.3689544, 106.8320943),
     "depok-baru": ("Depok Baru", -6.3920709, 106.8212108),

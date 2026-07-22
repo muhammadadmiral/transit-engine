@@ -276,3 +276,16 @@ D83_INBOUND = (
     (106.834038, -6.328432),
     (106.834967, -6.330178),
 )
+
+M20_OUTBOUND = (
+    (106.844757, -6.283767), # Terminal Pasar Minggu
+    (106.840250, -6.275100), # Jl Pejaten Raya
+    (106.835100, -6.280200), # Jl Sawo Manila
+    (106.828500, -6.286500), # Jl Raya Ragunan
+    (106.818200, -6.295800), # Jl Cilandak KKO
+    (106.811500, -6.310200), # Cilandak KKO selatan
+    (106.807800, -6.325500), # Jl Moh Kafi 1
+    (106.804500, -6.338200), # Ciganjur
+)
+
+M20_INBOUND = tuple(reversed(M20_OUTBOUND))

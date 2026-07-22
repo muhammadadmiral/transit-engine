@@ -8,6 +8,8 @@ from app.ingestion.curated.angkot_depok_additions import (
     D83_OUTBOUND,
     D105_INBOUND,
     D105_OUTBOUND,
+    M20_INBOUND,
+    M20_OUTBOUND,
 )
 from app.models.schema import DataConfidence, FlexibleRoute, ServiceCategory, TransportMode
 
@@ -148,6 +150,13 @@ ROUTES = (
         "Terminal Depok – Pondok Labu via Tanah Baru dan Gandul",
         D105_OUTBOUND,
         D105_INBOUND,
+        BPTJ_SOURCE_URL,
+    ),
+    CuratedRoute(
+        "M20",
+        "Terminal Pasar Minggu – Ciganjur via Cilandak KKO",
+        M20_OUTBOUND,
+        M20_INBOUND,
         BPTJ_SOURCE_URL,
     ),
 )

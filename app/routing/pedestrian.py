@@ -49,7 +49,7 @@ class PedestrianRouter:
         max_concurrency: int = 4,
         cache_ttl_seconds: int = 900,
         cache_max_entries: int = 512,
-        max_distance_meters: int = 5000,
+        max_distance_meters: int = 1000,
         ride_hail_max_distance_meters: int = 10000,
         tomtom_api_key: str = "",
         tomtom_base_url: str = "https://api.tomtom.com/routing/1",
