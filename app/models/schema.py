@@ -34,6 +34,7 @@ class TransportMode(StrEnum):
     MRT = "mrt"
     LRT = "lrt"
     TRANSJAKARTA = "transjakarta"
+    JAKLINGKO = "jaklingko"
     ANGKOT = "angkot"
     BIKUN = "bikun"
     WALK = "walk"
@@ -47,6 +48,11 @@ class DataConfidence(StrEnum):
 class WalkingRouteSource(StrEnum):
     FALLBACK = "fallback"
     VALHALLA = "valhalla"
+
+
+class TrafficSource(StrEnum):
+    HISTORICAL_PROFILE = "historical_profile"
+    LIVE_TOMTOM = "live_tomtom"
 
 
 class ServiceCategory(StrEnum):
@@ -90,6 +96,22 @@ class NearbyStopPurpose(StrEnum):
     ANY = "any"
     ORIGIN = "origin"
     DESTINATION = "destination"
+
+
+class GeocodeSource(StrEnum):
+    NOMINATIM = "nominatim"
+    PHOTON = "photon"
+
+
+class PlaceResult(SchemaModel):
+    area: str
+    category: str
+    id: str
+    label: str
+    lat: Annotated[float, Field(ge=-90, le=90)]
+    lng: Annotated[float, Field(ge=-180, le=180)]
+    subtitle: str
+    source: GeocodeSource
 
 
 class Stop(SchemaModel):
@@ -138,13 +160,21 @@ class Segment(SchemaModel):
     to_stop_lng: float | None = None
     walking_distance_meters: float | None = Field(default=None, ge=0)
     walking_route_source: WalkingRouteSource | None = None
+    scheduled_wait_min: float = Field(default=0, ge=0)
+    schedule_source_url: str | None = None
+    traffic_factor: float | None = Field(default=None, ge=0.1, le=5)
+    traffic_source: TrafficSource | None = None
+    traffic_updated_at: datetime | None = None
 
     @model_validator(mode="after")
     def fill_route_display_fields(self) -> "Segment":
         """Keep old constructors/imports compatible while exposing UI-safe labels."""
         if not self.route_code:
             parts = self.route_id.split(":")
-            if self.mode is TransportMode.TRANSJAKARTA and len(parts) > 1:
+            if (
+                self.mode in {TransportMode.TRANSJAKARTA, TransportMode.JAKLINGKO}
+                and len(parts) > 1
+            ):
                 self.route_code = parts[1]
             elif self.mode is TransportMode.ANGKOT and len(parts) > 3:
                 self.route_code = parts[3].upper()
@@ -157,6 +187,37 @@ class Segment(SchemaModel):
         self.from_stop_name = normalize_stop_name(self.from_stop_name, self.from_stop_id)
         self.to_stop_name = normalize_stop_name(self.to_stop_name, self.to_stop_id)
         return self
+
+
+class FlexibleRoute(SchemaModel):
+    """A hail-and-ride corridor without fabricated fixed stops."""
+
+    id: str
+    route_code: str
+    route_name: str
+    mode: TransportMode = TransportMode.ANGKOT
+    service_category: ServiceCategory = ServiceCategory.FEEDER
+    service_name: str
+    avg_speed_kmh: Annotated[float, Field(gt=0)]
+    fare: Annotated[int, Field(ge=0)]
+    fare_product_id: str
+    data_confidence: DataConfidence
+    last_verified_at: date
+    color: str = Field(pattern=r"^[0-9A-Fa-f]{6}$")
+    coordinates: list[tuple[float, float]] = Field(min_length=2)
+    source_url: str | None = None
+
+
+class ServiceFrequency(SchemaModel):
+    id: str
+    route_id: str
+    mode: TransportMode
+    day_type: Literal["weekday", "weekend", "daily"]
+    start_minute: Annotated[int, Field(ge=0, le=1439)]
+    end_minute: Annotated[int, Field(ge=1, le=1440)]
+    headway_min: Annotated[float, Field(gt=0)]
+    source_url: str
+    last_verified_at: date
 
 
 class Route(SchemaModel):
@@ -192,7 +253,7 @@ class RouteSearchRequest(SchemaModel):
     destination_lat: Annotated[float | None, Field(default=None, ge=-90, le=90)]
     destination_lng: Annotated[float | None, Field(default=None, ge=-180, le=180)]
     access_radius_meters: Annotated[int, Field(ge=100, le=5000)] = 1500
-    max_transfers: Annotated[int, Field(ge=0, le=5)] = 3
+    max_transfers: Annotated[int, Field(ge=0, le=5)] = 5
     departure_at: datetime | None = None
     payment_profile: PaymentProfile = PaymentProfile.STANDARD
 

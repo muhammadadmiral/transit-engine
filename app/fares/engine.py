@@ -142,12 +142,16 @@ def _fare_rides(segments: list[Segment]) -> list[list[Segment]]:
         if segment.mode is TransportMode.WALK:
             continue
         product = segment.fare_product_id
-        same_ride = bool(current) and (
-            (product is not None and product == current_product)
-            or (
-                product is None
-                and current_product is None
-                and segment.route_id == current_fallback_route
+        same_ride = (
+            bool(current)
+            and first_route_compatible(current[0], segment)
+            and (
+                (product is not None and product == current_product)
+                or (
+                    product is None
+                    and current_product is None
+                    and segment.route_id == current_fallback_route
+                )
             )
         )
         if not same_ride:
@@ -160,6 +164,11 @@ def _fare_rides(segments: list[Segment]) -> list[list[Segment]]:
     if current:
         rides.append(current)
     return rides
+
+
+def first_route_compatible(first: Segment, current: Segment) -> bool:
+    """Conventional angkot fares are paid per vehicle, not network-wide product."""
+    return first.mode is not TransportMode.ANGKOT or first.route_id == current.route_id
 
 
 def _quote_ride(

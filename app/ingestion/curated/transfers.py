@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 VERIFIED_AT = date(2026, 7, 20)
 MAX_NAMED_TRANSFER_METERS = 350
 MAX_EXPLICIT_TRANSFER_METERS = 500
-MAX_SPATIAL_TRANSFER_METERS = 150
-SPATIAL_CONNECTOR_MODES = {"angkot", "bikun"}
-SAME_MODE_CONNECTOR_MODES = {"transjakarta"}
+MAX_SPATIAL_TRANSFER_METERS = 250
+SPATIAL_CONNECTOR_MODES = {"bikun", "jaklingko"}
+SAME_MODE_CONNECTOR_MODES = {"transjakarta", "jaklingko"}
 MAX_SAME_MODE_TRANSFER_METERS = 120
 
 RAIL_TRANSFERS = (
@@ -69,7 +69,9 @@ async def build_transfer_segments(
                 StopRecord.mode,
                 func.ST_Y(StopRecord.location),
                 func.ST_X(StopRecord.location),
-            ).where(StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "angkot", "bikun")))
+            ).where(
+                StopRecord.mode.in_(("mrt", "lrt", "krl", "transjakarta", "jaklingko", "bikun"))
+            )
         )
     ).tuples()
     stops = {
@@ -81,7 +83,9 @@ async def build_transfer_segments(
             pairs.add(tuple(sorted((first_id, second_id))))
 
     rail_stops = {key: value for key, value in stops.items() if value[1] in {"mrt", "lrt", "krl"}}
-    transjakarta_stops = {key: value for key, value in stops.items() if value[1] == "transjakarta"}
+    transjakarta_stops = {
+        key: value for key, value in stops.items() if value[1] in {"transjakarta", "jaklingko"}
+    }
     for rail_id, rail in rail_stops.items():
         for transit_id, transit in transjakarta_stops.items():
             distance_meters = _distance_meters(rail[2], rail[3], transit[2], transit[3])
@@ -97,7 +101,7 @@ async def build_transfer_segments(
             func.ST_DWithin(
                 first.location,
                 second.location,
-                0.001347,  # roughly 150m in degrees at equator
+                0.002245,  # roughly 250m in degrees at equator
             ),
         )
         .where(

@@ -70,16 +70,23 @@ def normalize_feed(
         if row.get("route_id") and row.get("fare_id") in fares
     }
 
+    stop_modes: dict[str, set[TransportMode]] = defaultdict(set)
+    for stop_time in stop_times.to_dict("records"):
+        trip = trip_rows.get(stop_time.get("trip_id"))
+        route = route_rows.get(trip.get("route_id")) if trip else None
+        if route is not None:
+            stop_modes[stop_time["stop_id"]].add(_transport_mode(_service_name(route)))
     normalized_stops = [
         Stop(
-            id=f"transjakarta:{row['stop_id']}",
+            id=f"{mode.value}:{row['stop_id']}",
             name=row["stop_name"],
             lat=float(row["stop_lat"]),
             lng=float(row["stop_lon"]),
-            modes=[TransportMode.TRANSJAKARTA],
+            modes=[mode],
         )
         for row in stop_rows.values()
         if row.get("stop_lat") and row.get("stop_lon")
+        for mode in sorted(stop_modes.get(row["stop_id"], ()), key=lambda item: item.value)
     ]
 
     durations: dict[tuple[str, str, str, str], list[float]] = defaultdict(list)
@@ -152,19 +159,23 @@ def _build_segment(
 ) -> Segment:
     from_stop_id = from_stop["stop_id"]
     to_stop_id = to_stop["stop_id"]
+    mode = _transport_mode(service_name)
+    namespace = mode.value
     return Segment(
-        id=f"transjakarta:{route_id}:{direction_id}:{from_stop_id}:{to_stop_id}",
-        route_id=f"transjakarta:{route_id}:{direction_id}",
+        id=f"{namespace}:{route_id}:{direction_id}:{from_stop_id}:{to_stop_id}",
+        route_id=f"{namespace}:{route_id}:{direction_id}",
         route_code=route_code,
         route_name=route_name,
-        from_stop_id=f"transjakarta:{from_stop_id}",
-        to_stop_id=f"transjakarta:{to_stop_id}",
-        mode=TransportMode.TRANSJAKARTA,
+        from_stop_id=f"{namespace}:{from_stop_id}",
+        to_stop_id=f"{namespace}:{to_stop_id}",
+        mode=mode,
         service_category=_service_category(service_name),
         service_name=service_name,
         avg_duration_min=avg_duration_min,
         fare=fare,
-        fare_product_id="transjakarta:regular",
+        fare_product_id=(
+            "jaklingko:mikrotrans" if mode is TransportMode.JAKLINGKO else "transjakarta:regular"
+        ),
         data_confidence=DataConfidence.OFFICIAL,
         last_verified_at=verified_at,
         color=color,
@@ -215,6 +226,10 @@ def _route_name(route: dict[str, Any]) -> str:
 
 def _service_category(service_name: str) -> ServiceCategory:
     return SERVICE_CATEGORY_BY_ROUTE_DESC[service_name]
+
+
+def _transport_mode(service_name: str) -> TransportMode:
+    return TransportMode.JAKLINGKO if service_name == "Mikrotrans" else TransportMode.TRANSJAKARTA
 
 
 def _shape_points(shapes: Any) -> dict[str, list[tuple[float, float, float]]]:

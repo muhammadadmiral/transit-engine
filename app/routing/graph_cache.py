@@ -6,7 +6,8 @@ from time import monotonic
 import networkx as nx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.transit_repository import load_segments
+from app.db.transit_repository import load_all_stops, load_flexible_routes, load_segments
+from app.routing.flexible import add_flexible_transfers, materialize_flexible_segments
 from app.routing.graph import build_graph
 from app.routing.pedestrian import invalidate_pedestrian_cache
 
@@ -28,7 +29,12 @@ async def get_routing_graph(session: AsyncSession) -> nx.MultiDiGraph:
         now = monotonic()
         if _cached_graph is not None and now - _cached_at < GRAPH_CACHE_TTL_SECONDS:
             return _cached_graph
-        _cached_graph = build_graph(await load_segments(session))
+        # AsyncSession deliberately disallows concurrent operations on one connection.
+        segments = await load_segments(session)
+        routes = await load_flexible_routes(session)
+        stops = await load_all_stops(session)
+        _cached_graph = build_graph([*segments, *materialize_flexible_segments(routes)])
+        add_flexible_transfers(_cached_graph, stops)
         _cached_at = monotonic()
         return _cached_graph
 

@@ -14,7 +14,9 @@ dependencies = [
   "fastapi[standard]>=0.115,<1.0",
   "geoalchemy2>=0.16,<1.0",
   "gtfs-kit>=10.1,<11.0",
+  "httpx>=0.28,<1.0",
   "networkx>=3.4,<4.0",
+  "pypdf>=5.0,<7.0",
   "pydantic-settings>=2.7,<3.0",
   "sqlalchemy[asyncio]>=2.0,<3.0",
 ]

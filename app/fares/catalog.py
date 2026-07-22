@@ -19,6 +19,11 @@ DEFAULT_FARE_CATALOG = FareCatalog(
             source_url="https://transjakarta.co.id/",
         ),
         FlatFareRule(
+            product_id="jaklingko:mikrotrans",
+            amount=0,
+            source_url="https://www.jakarta.go.id/jaklingko",
+        ),
+        FlatFareRule(
             product_id="lrt-jakarta:regular",
             amount=5000,
             source_url="https://www.lrtjakarta.co.id/faq.html?action=FAQ.list&page=3",
